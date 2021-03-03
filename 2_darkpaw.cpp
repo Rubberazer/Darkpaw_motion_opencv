@@ -9,11 +9,13 @@
 #include <pigpio.h>     /* for handling the GPIO */
 #include <csignal>	/* for catching exceptions e.g. control-C, csignal in C++ */
 #include <unistd.h>	/* this one is to make usleep() work */
+#include <ctype.h>      /* added for CV thread */
 #include <opencv2/core/core.hpp>	/*this one and the ones that follow are the opencv stuff */
 #include <opencv2/core/utility.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/video/background_segm.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/objdetect/objdetect.hpp>
 
 using namespace std;
 using namespace cv;
@@ -163,41 +165,68 @@ void *Distance(void *arg)
 
 void *Camera(void *arg)
 {
-  while(interrupt)
-    {
       Mat frame;
-    //--- INITIALIZE VIDEOCAPTURE
-    VideoCapture cap;
-    // open the default camera using default API
-    // cap.open(0);
-    // OR advance usage: select any API backend
-    int deviceID = 0;             // 0 = open default camera
-    int apiID = cv::CAP_ANY;      // 0 = autodetect default API
-    // open selected camera using selected API
-    cap.open(deviceID, apiID);
-    // check if we succeeded
-    if (!cap.isOpened()) 
-      {
-        cerr << "ERROR! Unable to open camera\n";
-      }
-    //--- GRAB AND WRITE LOOP
-    cout << "Start grabbing" << endl
-        << "Press any key to terminate" << endl;
-    for (;;)
-      {
-        // wait for a new frame from camera and store it into 'frame'
+      HOGDescriptor hog;
+      hog.setSVMDetector(HOGDescriptor::getDefaultPeopleDetector());
+      namedWindow("people detector", 1);
+      /*--- INITIALIZE VIDEOCAPTURE */
+      VideoCapture cap;
+      int deviceID = 0;             // 0 = open default camera
+      int apiID = cv::CAP_ANY;      // 0 = autodetect default API
+      // open selected camera using selected API
+      cap.open(deviceID, apiID);
+      // check if we succeeded
+      if (!cap.isOpened()) 
+	{
+	  cerr << "ERROR! Unable to open camera, exiting thread\n";
+	  pthread_exit(NULL);
+	}
+      //--- GRAB AND WRITE LOOP
+    printf("Start grabbing\n");
+    while(interrupt)
+    {
+        /* wait for a new frame from camera and store it into 'frame' */
         cap.read(frame);
-        // check if we succeeded
-        if (frame.empty()) {
-            cerr << "ERROR! blank frame grabbed\n";
+        /* check if we succeeded */
+        if (frame.empty()) 
+	  {
+            printf("ERROR! blank frame grabbed\n");
             break;
+	  }
+        /* show live and wait */
+	vector<Rect> found, found_filtered;
+        double t = (double)getTickCount();
+        // run the detector with default parameters. to get a higher hit-rate
+        // (and more false alarms, respectively), decrease the hitThreshold and
+        // groupThreshold (set groupThreshold to 0 to turn off the grouping completely).
+        hog.detectMultiScale(frame, found, 0, Size(8, 8), Size(32, 32), 1.05, 0.1);
+        t = (double)getTickCount() - t;
+        printf("tdetection time = %gms\n", t*1000. / cv::getTickFrequency());
+        size_t i, j;
+        for (i = 0; i < found.size(); i++)
+        {
+            Rect r = found[i];
+            for (j = 0; j < found.size(); j++)
+                if (j != i && (r & found[j]) == r)
+                    break;
+            if (j == found.size())
+                found_filtered.push_back(r);
         }
-        // show live and wait for a key with timeout long enough to show images
-        imshow("Live", frame);
-        if (waitKey(5) >= 0)
-            break;
-      }
+        for (i = 0; i < found_filtered.size(); i++)
+        {
+            Rect r = found_filtered[i];
+            // the HOG detector returns slightly larger rectangles than the real objects.
+            // so we slightly shrink the rectangles to get a nicer output.
+            r.x += cvRound(r.width*0.1);
+            r.width = cvRound(r.width*0.8);
+            r.y += cvRound(r.height*0.07);
+            r.height = cvRound(r.height*0.8);
+            rectangle(frame, r.tl(), r.br(), cv::Scalar(0, 255, 0), 3);
+        }
+        imshow("people detector", frame);
+	waitKey(1);
     }
+    destroyAllWindows();
   pthread_exit(NULL);
 }
 
