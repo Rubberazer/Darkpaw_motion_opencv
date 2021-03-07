@@ -11,11 +11,13 @@
 #include <unistd.h>	/* this one is to make usleep() work */
 #include <ctype.h>      /* added for CV thread */
 #include <opencv2/core/core.hpp>	/*this one and the ones that follow are the opencv stuff */
+#include <opencv2/core/core_c.h>
 #include <opencv2/core/utility.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/video/background_segm.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/objdetect/objdetect.hpp>
+#include <opencv2/imgcodecs/imgcodecs.hpp>
 
 using namespace std;
 using namespace cv;
@@ -28,8 +30,15 @@ typedef struct
   double distance; /*distance to the obstacle from the ultrasounds sensor*/
   int ultrimpct; /*near frontal impact to the wall, from the ultrasounds */ 
   int block; /* this is to avoid the robot from getting stuck in obstacles not detected by the sensors */
-  int servos; /*this one is the PCA9685 handler returned by I2Copen() */
   int global_position; /*this one is to store the legs global position from 1 to 8 */
+  int MPU6050;
+  float acce_x; /* Accelerometer X axis */ 
+  float acce_y; /* Accelerometer y axis */ 
+  float acce_z; /* Accelerometer z axis */ 
+  float gyro_x; /* Gyroscope X axis */ 
+  float gyro_y; /* Gyroscope y axis */ 
+  float gyro_z; /* Gyroscope z axis */ 
+  FILE *f;
   
 } PARAM;
 
@@ -47,7 +56,7 @@ typedef struct
   int HRB_pulse_old;
   int HRM_pulse_old;
   int HRE_pulse_old;
-  int servos;
+  int servos; /*this one is the PCA9685 handler returned by I2Copen() */
   
 } SERVOS_PARAMETERS;
 
@@ -70,9 +79,39 @@ void inthandler(int signum)
   i2cWriteByteData(parameters_servo.servos, 0xFD, 0x10); /* Shutting down all channels */
   i2cWriteByteData(parameters_servo.servos, 0x00, 0x00); /* Reset */
   i2cClose(parameters_servo.servos);
+  i2cClose(parameters.MPU6050);
   gpioTerminate();
+  fclose(parameters.f);
   printf("Caught signal %d, coming out ...\n", signum);
   exit(1);
+}
+
+void *Book_keeping(void *arg)
+
+{
+  char s[100];
+  time_t now;
+  struct tm *t;
+  FILE *f;
+  
+  f = fopen("record_new.csv", "w+");
+  if (f == NULL)
+    {
+      printf("Error opening file!\n");
+      exit(1);
+    }
+  parameters.f = f;
+  while(interrupt)
+  {
+    time(&now);
+    t = localtime(&now);
+    strftime(s, 100, "%H:%M:%S", t);
+    fprintf(f,"%s, %f, %f, %f, %f, %f, %f, %f\n",s ,parameters.distance, parameters.acce_x, parameters.acce_y, 
+      parameters.acce_z, parameters.gyro_x, parameters.gyro_y, parameters.gyro_z);
+    usleep(250000);
+  }
+  fclose(f);
+  pthread_exit(NULL);
 }
 
 /* This function below is for the ultrasounds sensor */
@@ -86,17 +125,7 @@ void *Distance(void *arg)
   struct timeval t1, t2, t3;
   double time_interval,distance, distbuff;
   int count;
-  char s[100];
-  time_t now;
-  struct tm *t;
-  FILE *f;
-
-  f = fopen("record.csv", "w+");
-  if (f == NULL)
-    {
-      printf("Error opening file!\n");
-      exit(1);
-    }
+  
   while (interrupt)
     {
       time_interval = 0;
@@ -150,39 +179,208 @@ void *Distance(void *arg)
 	  {
 	    parameters.ultrimpct = 0;
 	  }
-	time(&now);
-	t = localtime(&now);
-	strftime(s, 100, "%H:%M:%S", t);
-	fprintf(f,"%s, %f\n",s ,parameters.distance);
       }
 
       usleep(250000);
     }
-  fclose(f);
+    
   pthread_exit(NULL);
 }
+/* Next thread will read the gyroscope & accelerometer data MPU6050 */
+
+void *MPU6050_DATA(void *arg)
+
+{
+  //const float GRAVITIY_MS2 = 9.80665;
+  
+  /* Scale Modifiers */
+  //const float ACCEL_SCALE_MODIFIER_2G = 16384.0;
+  const float ACCEL_SCALE_MODIFIER_4G = 8192.0;
+  //const float ACCEL_SCALE_MODIFIER_8G = 4096.0;
+  //const float ACCEL_SCALE_MODIFIER_16G = 2048.0;
+  //const float GYRO_SCALE_MODIFIER_250DEG = 131.0;
+  const float GYRO_SCALE_MODIFIER_500DEG = 65.5;
+  //const float GYRO_SCALE_MODIFIER_1000DEG = 32.8;
+  //const float GYRO_SCALE_MODIFIER_2000DEG = 16.4;
+  
+  /* Pre-defined ranges */
+  //const int ACCEL_RANGE_2G = 0x00;
+  const int ACCEL_RANGE_4G = 0x08;
+  //const int ACCEL_RANGE_8G = 0x10;
+  //const int ACCEL_RANGE_16G = 0x18;
+  //const int GYRO_RANGE_250DEG = 0x00;
+  const int GYRO_RANGE_500DEG = 0x08;
+  //const int GYRO_RANGE_1000DEG = 0x10;
+  //const int GYRO_RANGE_2000DEG = 0x18;
+  
+  /* MPU-6050 Registers */
+  const int PWR_MGMT_1 = 0x6B;
+  //const int PWR_MGMT_2 = 0x6C;
+  const int ACCEL_XOUT0 = 0x3B;
+  const int ACCEL_YOUT0 = 0x3D;
+  const int ACCEL_ZOUT0 = 0x3F;
+  //const int TEMP_OUT0 = 0x41;
+  const int GYRO_XOUT0 = 0x43;
+  const int GYRO_YOUT0 = 0x45;
+  const int GYRO_ZOUT0 = 0x47;
+  const int ACCEL_CONFIG = 0x1C;
+  const int GYRO_CONFIG = 0x1B;
+ 
+  int MPU6050 = 0;
+  int acce_x_H = 0;
+  int acce_x_L = 0;
+  float acce_x = 0;
+  int acce_y_H = 0;
+  int acce_y_L = 0;
+  float acce_y = 0;
+  int acce_z_H = 0;
+  int acce_z_L = 0;
+  float acce_z = 0;
+  int gyro_x_H = 0;
+  int gyro_x_L = 0;
+  float gyro_x = 0;
+  int gyro_y_H = 0;
+  int gyro_y_L = 0;
+  float gyro_y = 0;
+  int gyro_z_H = 0;
+  int gyro_z_L = 0;
+  float gyro_z = 0;
+  
+  /* Opening the conenction to the I2C slave */
+  MPU6050 = i2cOpen(1,0x68,0);
+  
+    if (MPU6050 >=  0)
+    {
+      /* PI connection to I2C slave 0x68 OK*/
+      printf("Open I2C to slave 0x68 OK. Return code:  %d\n", MPU6050);
+      printf("MPU6050 number handler:  %d\n", MPU6050);
+    }
+  else
+    {
+      /* No PI connection to I2C slave 0x68 */
+      printf("Open I2C to slave 0x68 failed. Error code:  %d\n", MPU6050);
+      exit(MPU6050);
+    }
+  parameters.MPU6050 = MPU6050;
+  
+  /* Wake up the MPU-6050 since it starts in sleep mode */
+  i2cWriteByteData(MPU6050, PWR_MGMT_1, 0x00); 
+  usleep(1000);
+  
+  /* Now set up the accelerator  range to 4G */
+  i2cWriteByteData(MPU6050, ACCEL_CONFIG, ACCEL_RANGE_4G); 
+  usleep(1000);
+  
+  /* Now set up the gyroscope  range to 500 deg/second */
+  i2cWriteByteData(MPU6050, GYRO_CONFIG, GYRO_RANGE_500DEG);
+  usleep(1000);
+  
+  
+  while (interrupt)
+  {
+    /* Reading accelerometer values */
+    acce_x_H = i2cReadByteData(MPU6050, ACCEL_XOUT0); /* getting the H register 15:8 */
+    acce_x_L = i2cReadByteData(MPU6050, ACCEL_XOUT0+1); /* getting the H register 7:0 */
+    acce_x = (acce_x_H << 8) + acce_x_L;
+    if (acce_x >= 0x8000)
+    {
+      acce_x = -(65535 - acce_x) + 1;
+    }
+    acce_x = acce_x/ACCEL_SCALE_MODIFIER_4G;
+    parameters.acce_x = acce_x;
+    
+    acce_y_H = i2cReadByteData(MPU6050, ACCEL_YOUT0); /* getting the H register 15:8 */
+    acce_y_L = i2cReadByteData(MPU6050, ACCEL_YOUT0+1); /* getting the H register 7:0 */
+    acce_y = (acce_y_H << 8) + acce_y_L;
+    if (acce_y >= 0x8000)
+    {
+      acce_y = -(65535 - acce_y) + 1;
+    }
+    acce_y = acce_y/ACCEL_SCALE_MODIFIER_4G;
+    parameters.acce_y = acce_y;
+    
+    acce_z_H = i2cReadByteData(MPU6050, ACCEL_ZOUT0); /* getting the H register 15:8 */
+    acce_z_L = i2cReadByteData(MPU6050, ACCEL_ZOUT0+1); /* getting the H register 7:0 */
+    acce_z = (acce_z_H << 8) + acce_z_L;
+    if (acce_z >= 0x8000)
+    {
+      acce_z = -(65535 - acce_z) + 1;
+    }
+    acce_z = acce_z/ACCEL_SCALE_MODIFIER_4G;
+    parameters.acce_z = acce_z;
+    
+    /* Reading gyroscope values */
+    gyro_x_H = i2cReadByteData(MPU6050, GYRO_XOUT0); /* getting the H register 15:8 */
+    gyro_x_L = i2cReadByteData(MPU6050, GYRO_XOUT0+1); /* getting the H register 7:0 */
+    gyro_x = (gyro_x_H << 8) + gyro_x_L;
+    if (gyro_x >= 0x8000)
+    {
+      gyro_x = -(65535 - gyro_x) + 1;
+    }
+    gyro_x = gyro_x/GYRO_SCALE_MODIFIER_500DEG;
+    parameters.gyro_x = gyro_x;
+    
+    gyro_y_H = i2cReadByteData(MPU6050, GYRO_YOUT0); /* getting the H register 15:8 */
+    gyro_y_L = i2cReadByteData(MPU6050, GYRO_YOUT0+1); /* getting the H register 7:0 */
+    gyro_y = (gyro_y_H << 8) + gyro_y_L;
+    if (gyro_y >= 0x8000)
+    {
+      gyro_y = -(65535 - gyro_y) + 1;
+    }
+    gyro_y = gyro_y/GYRO_SCALE_MODIFIER_500DEG;
+    parameters.gyro_y = gyro_y;
+    
+    gyro_z_H = i2cReadByteData(MPU6050, GYRO_ZOUT0); /* getting the H register 15:8 */
+    gyro_z_L = i2cReadByteData(MPU6050, GYRO_ZOUT0+1); /* getting the H register 7:0 */
+    gyro_z = (gyro_z_H << 8) + gyro_z_L;
+    if (gyro_z >= 0x8000)
+    {
+      gyro_z = -(65535 - gyro_z) + 1;
+    }
+    gyro_z = gyro_z/GYRO_SCALE_MODIFIER_500DEG;
+    parameters.gyro_z = gyro_z;
+    
+    /*printf("Accelerometer X:  %f\n", acce_x);
+    printf("Gyro X:  %f\n", gyro_x);
+    printf("Accelerometer Y:  %f\n", acce_y);
+    printf("Gyro Y:  %f\n", gyro_y);
+    printf("Accelerometer Z:  %f\n", acce_z);
+    printf("Gyro Z:  %f\n", gyro_z); */
+  }
+   i2cClose(MPU6050);
+   pthread_exit(NULL);
+}
+
+
 /* Next thread will manage the opencv stuff */
 
 void *Camera(void *arg)
 {
-      Mat frame;
-      HOGDescriptor hog;
-      hog.setSVMDetector(HOGDescriptor::getDefaultPeopleDetector());
-      namedWindow("people detector", 1);
-      /*--- INITIALIZE VIDEOCAPTURE */
-      VideoCapture cap;
-      int deviceID = 0;             // 0 = open default camera
-      int apiID = cv::CAP_ANY;      // 0 = autodetect default API
-      // open selected camera using selected API
-      cap.open(deviceID, apiID);
-      // check if we succeeded
-      if (!cap.isOpened()) 
-	{
-	  cerr << "ERROR! Unable to open camera, exiting thread\n";
-	  pthread_exit(NULL);
-	}
+    Mat frame, framegray;
+    Mat fgMaskMOG2; /* Foreground mask generated by MOG2 method */ 
+    RNG rng(12345);
+    vector<vector<Point> > contours; 
+    vector<Vec4i> hierarchy;
+    Ptr<BackgroundSubtractor> pMOG2; /* MOG2 Background subtractor */
+    pMOG2 = createBackgroundSubtractorMOG2(100,200,true); /* Create MOG2 Background Subtractor object */
+ 
+    /*--- INITIALIZE VIDEOCAPTURE */
+    VideoCapture cap;
+    cap.set(CAP_PROP_FRAME_WIDTH,640); /*set camera resolution */
+    cap.set(CAP_PROP_FRAME_HEIGHT,480); /* set camera resolution */
+    cap.set(CAP_PROP_BUFFERSIZE, 3);
+    int deviceID = 0;             // 0 = open default camera
+    int apiID = cv::CAP_ANY;      // 0 = autodetect default API
+    // open selected camera using selected API
+    cap.open(deviceID, apiID);
+    // check if we succeeded
+    if (!cap.isOpened()) 
+      {
+	cerr << "ERROR! Unable to open camera, exiting thread\n";
+	pthread_exit(NULL);
+      }
       //--- GRAB AND WRITE LOOP
-    printf("Start grabbing\n");
+    
     while(interrupt)
     {
         /* wait for a new frame from camera and store it into 'frame' */
@@ -193,40 +391,37 @@ void *Camera(void *arg)
             printf("ERROR! blank frame grabbed\n");
             break;
 	  }
+	/* colour to gray conversion */
+	cvtColor(frame, framegray, COLOR_RGB2GRAY); 
+	pMOG2->apply(framegray, fgMaskMOG2); /* Update the MOG2 background model based on the current frame */
+        
+	findContours(fgMaskMOG2, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+	//Mat output= Mat::zeros(fgMaskMOG2.rows,fgMaskMOG2.cols, CV_8UC3);
+	//printf("contour size: %d\n", contours.size());
+	/* Check the number of objects detected */
+	vector<Point> approx;
+	  // test each contour
+
+	for( size_t i = 0; i < contours.size(); i++ )
+           {
+	       /* approximate contour with accuracy proportional
+                to the contour perimeter */
+	     approxPolyDP(contours[i], approx, arcLength(contours[i], true)*0.02, true); 
+	     
+	     
+	    if (fabs(contourArea(approx)) > 400)
+	    {
+	     //Scalar color = Scalar( rng.uniform(0, 256), rng.uniform(0,256), rng.uniform(0,256) );
+	     drawContours(frame , contours, i, (0,255,0), 3 );
+
+	    }
+	   }
+	  //imshow("FG Mask MOG 2", frame); /*Show the MOG2 foreground mask */
         /* show live and wait */
-	vector<Rect> found, found_filtered;
-        double t = (double)getTickCount();
-        // run the detector with default parameters. to get a higher hit-rate
-        // (and more false alarms, respectively), decrease the hitThreshold and
-        // groupThreshold (set groupThreshold to 0 to turn off the grouping completely).
-        hog.detectMultiScale(frame, found, 0, Size(8, 8), Size(32, 32), 1.05, 0.1);
-        t = (double)getTickCount() - t;
-        printf("tdetection time = %gms\n", t*1000. / cv::getTickFrequency());
-        size_t i, j;
-        for (i = 0; i < found.size(); i++)
-        {
-            Rect r = found[i];
-            for (j = 0; j < found.size(); j++)
-                if (j != i && (r & found[j]) == r)
-                    break;
-            if (j == found.size())
-                found_filtered.push_back(r);
-        }
-        for (i = 0; i < found_filtered.size(); i++)
-        {
-            Rect r = found_filtered[i];
-            // the HOG detector returns slightly larger rectangles than the real objects.
-            // so we slightly shrink the rectangles to get a nicer output.
-            r.x += cvRound(r.width*0.1);
-            r.width = cvRound(r.width*0.8);
-            r.y += cvRound(r.height*0.07);
-            r.height = cvRound(r.height*0.8);
-            rectangle(frame, r.tl(), r.br(), cv::Scalar(0, 255, 0), 3);
-        }
-        imshow("people detector", frame);
 	waitKey(1);
     }
-    destroyAllWindows();
+  destroyAllWindows();
+  cap.release();
   pthread_exit(NULL);
 }
 
@@ -234,7 +429,7 @@ void *Camera(void *arg)
 
 void Init_Pigpio(void)
 {
-  int Init; 
+  int Init = 0; 
   Init = gpioInitialise();
   if (Init < 0)
     {
@@ -254,7 +449,6 @@ void Init_Pigpio(void)
 int Restart_PCA9685(void)
 
 {
-  int Init =0;
   int oldmode;
   int newmode;
   int servos;
@@ -262,13 +456,13 @@ int Restart_PCA9685(void)
     if (servos >=  0)
     {
       /* PI connection to I2C slave 40 OK*/
-      printf("Open I2C to slave 0x40 OK. Return code:  %d\n", Init);
+      printf("Open I2C to slave 0x40 OK. Return code:  %d\n", servos);
       printf("PCA9685 number handler:  %d\n", servos);
     }
   else
     {
       /* No PI connection to I2C slave 40 */
-      printf("Open I2C to slave 0x40 failed. Error code:  %d\n", Init);
+      printf("Open I2C to slave 0x40 failed. Error code:  %d\n", servos);
       exit(servos);
     }
   oldmode = i2cReadByteData(servos, 0x00); /* getting current mode */
@@ -421,13 +615,13 @@ void Forward(int servos_handler)
 	  FLB_pulse = 307 + wiggle_middle*FLB_direction;
 	  FLM_pulse = 307 + wiggle_v*FLM_direction;
 	  FLE_pulse = 307 + wiggle_v*FLE_direction;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(3-2))/3 - wiggle_h))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*5/3 - wiggle_h))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(5-2))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*3/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(7-2))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*1/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
@@ -436,25 +630,25 @@ void Forward(int servos_handler)
 	  FLB_pulse = 307 + (wiggle_middle + wiggle_h)*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(4-2))/3 - wiggle_h))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(4)/3 - wiggle_h))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(6-2))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(2)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(8-2))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(0)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
 	
 	case 3:
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(3-2))/3 - wiggle_h))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(5)/3 - wiggle_h))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(5-2))/3 - wiggle_h))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(3)/3 - wiggle_h))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(7-2))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(1)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
 	  HRB_pulse = 307 + (-wiggle_middle)*HRB_direction;
@@ -463,13 +657,13 @@ void Forward(int servos_handler)
 	  break;
 	  
 	case 4:
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(4-2))/3 - wiggle_h))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(4)/3 - wiggle_h))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(6-2))/3 - wiggle_h))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(2)/3 - wiggle_h))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(8-2))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(0)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
 	  HRB_pulse = 307 + (-wiggle_middle + wiggle_h)*HRB_direction;
@@ -478,61 +672,61 @@ void Forward(int servos_handler)
 	  break;
 	  
 	case 5:
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(5-2))/3 - wiggle_h))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(3)/3 - wiggle_h))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(7-2))/3 - wiggle_h))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(1)/3 - wiggle_h))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
 	  FRB_pulse = 307 + wiggle_middle*FRB_direction;
 	  FRM_pulse = 307 + wiggle_v*FRM_direction;
 	  FRE_pulse = 307 + wiggle_v*FRE_direction;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(3-2))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(5)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
 	
 	case 6:
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(6-2))/3 - wiggle_h))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(2)/3 - wiggle_h))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(8-2))/3 - wiggle_h))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(0)/3 - wiggle_h))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
 	  FRB_pulse = 307 + (wiggle_middle + wiggle_h)*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(4-2))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(4)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
 	  
 	case 7:
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(7-2))/3 - wiggle_h))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(1)/3 - wiggle_h))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
 	  HLB_pulse = 307 + (-wiggle_middle)*HLB_direction;
 	  HLM_pulse = 307 + wiggle_v*HLM_direction;
 	  HLE_pulse = 307 + wiggle_v*HLE_direction;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(3-2))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(5)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(5-2))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(3)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
 	  
 	case 8:
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(8-2))/3 - wiggle_h))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(0)/3 - wiggle_h))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
 	  HLB_pulse = 307 + (-wiggle_middle + wiggle_h)*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(4-2))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(4)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(6-2))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(2)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;  
@@ -726,13 +920,13 @@ void Backward(int servos_handler)
 	  FLB_pulse = 307 + wiggle_middle*FLB_direction;
 	  FLM_pulse = 307 + wiggle_v*FLM_direction;
 	  FLE_pulse = 307 + wiggle_v*FLE_direction;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(1))/3 - wiggle_h))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(5)/3 - wiggle_h))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(3))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(3)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(5))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(1)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
@@ -741,25 +935,25 @@ void Backward(int servos_handler)
 	  FLB_pulse = 307 + (wiggle_middle + wiggle_h)*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(2))/3 - wiggle_h))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(4)/3 - wiggle_h))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(4))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(2)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(6))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(0)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
 	
 	case 3:
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(1))/3 - wiggle_h))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(5)/3 - wiggle_h))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(3))/3 - wiggle_h))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(3)/3 - wiggle_h))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(5))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(1)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
 	  HRB_pulse = 307 + (-wiggle_middle)*HRB_direction;
@@ -768,13 +962,13 @@ void Backward(int servos_handler)
 	  break;
 	  
 	case 4:
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(2))/3 - wiggle_h))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(4)/3 - wiggle_h))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(4))/3 - wiggle_h))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(2)/3 - wiggle_h))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(6))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(0)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
 	  HRB_pulse = 307 + (-wiggle_middle + wiggle_h)*HRB_direction;
@@ -783,61 +977,61 @@ void Backward(int servos_handler)
 	  break;
 	  
 	case 5:
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(3))/3 - wiggle_h))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(3)/3 - wiggle_h))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(5))/3 - wiggle_h))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(1)/3 - wiggle_h))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
 	  FRB_pulse = 307 + wiggle_middle*FRB_direction;
 	  FRM_pulse = 307 + wiggle_v*FRM_direction;
 	  FRE_pulse = 307 + wiggle_v*FRE_direction;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(1))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(5)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
 	
 	case 6:
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(4))/3 - wiggle_h))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(2)/3 - wiggle_h))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(6))/3 - wiggle_h))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(0)/3 - wiggle_h))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
 	  FRB_pulse = 307 + (wiggle_middle + wiggle_h)*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(2))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(4)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
 	  
 	case 7:
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(5))/3 - wiggle_h))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(1)/3 - wiggle_h))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
 	  HLB_pulse = 307 + (-wiggle_middle)*HLB_direction;
 	  HLM_pulse = 307 + wiggle_v*HLM_direction;
 	  HLE_pulse = 307 + wiggle_v*HLE_direction;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(1))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(5)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(3))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(3)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
 	  
 	case 8:
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(6))/3 - wiggle_h))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(0)/3 - wiggle_h))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
 	  HLB_pulse = 307 + (-wiggle_middle + wiggle_h)*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(2))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(4)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(4))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(2)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;  
@@ -1031,10 +1225,10 @@ void Left(int servos_handler)
 	  FLB_pulse = 307 + wiggle_middle*FLB_direction;
 	  FLM_pulse = 307 + wiggle_v*FLM_direction;
 	  FLE_pulse = 307 + wiggle_v*FLE_direction;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(5-2))/3 - wiggle_h)*(-1))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(3)/3 - wiggle_h)*(-1))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(5-2))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(3)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
 	  HRB_pulse = 307 + (-wiggle_middle)*HRB_direction;
@@ -1046,10 +1240,10 @@ void Left(int servos_handler)
 	  FLB_pulse = 307 + (wiggle_middle + wiggle_h*(-1))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(8-2))/3 - wiggle_h)*(-1))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(0)/3 - wiggle_h)*(-1))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(8-2))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(0)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
 	  HRB_pulse = 307 + (-wiggle_middle + wiggle_h)*HRB_direction;
@@ -1058,7 +1252,7 @@ void Left(int servos_handler)
 	  break;
 	
 	case 3: 	
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(5-2))/3 - wiggle_h)*(-1))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(3)/3 - wiggle_h)*(-1))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307;
 	  HLB_pulse = 307 + (-wiggle_middle)*HLB_direction;
@@ -1067,13 +1261,13 @@ void Left(int servos_handler)
 	  FRB_pulse = 307 + wiggle_middle*FRB_direction;
 	  FRM_pulse = 307 + wiggle_v*FRM_direction;
 	  FRE_pulse = 307 + wiggle_v*FRE_direction;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(5-2))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(3)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
 	  
 	case 4: 	
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(8-2))/3 - wiggle_h)*(-1))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(0)/3 - wiggle_h)*(-1))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
 	  HLB_pulse = 307 + (-wiggle_middle + wiggle_h*(-1))*HLB_direction;
@@ -1082,7 +1276,7 @@ void Left(int servos_handler)
 	  FRB_pulse = 307 + (wiggle_middle + wiggle_h)*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
-	  HRB_pulse = 307 +(-wiggle_middle + (wiggle_h*(6-(8-2))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 +(-wiggle_middle + (wiggle_h*(0)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
@@ -1276,10 +1470,10 @@ void Right(int servos_handler)
 	  FLB_pulse = 307 + wiggle_middle*FLB_direction;
 	  FLM_pulse = 307 + wiggle_v*FLM_direction;
 	  FLE_pulse = 307 + wiggle_v*FLE_direction;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(5-2))/3 - wiggle_h)*(-1))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(3)/3 - wiggle_h)*(-1))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(5-2))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(3)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
 	  HRB_pulse = 307 + (-wiggle_middle)*HRB_direction;
@@ -1291,10 +1485,10 @@ void Right(int servos_handler)
 	  FLB_pulse = 307 + (wiggle_middle + wiggle_h*(-1))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
-	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(8-2))/3 - wiggle_h)*(-1))*HLB_direction;
+	  HLB_pulse = 307 + (-wiggle_middle + (wiggle_h*(0)/3 - wiggle_h)*(-1))*HLB_direction;
 	  HLM_pulse = 307;
 	  HLE_pulse = 307;
-	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(8-2))/3 - wiggle_h))*FRB_direction;
+	  FRB_pulse = 307 + (wiggle_middle + (wiggle_h*(0)/3 - wiggle_h))*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
 	  HRB_pulse = 307 + (-wiggle_middle + wiggle_h)*HRB_direction;
@@ -1303,7 +1497,7 @@ void Right(int servos_handler)
 	  break;
 	
 	case 3: 	
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(5-2))/3 - wiggle_h)*(-1))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(3)/3 - wiggle_h)*(-1))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307;
 	  HLB_pulse = 307 + (-wiggle_middle)*HLB_direction;
@@ -1312,13 +1506,13 @@ void Right(int servos_handler)
 	  FRB_pulse = 307 + wiggle_middle*FRB_direction;
 	  FRM_pulse = 307 + wiggle_v*FRM_direction;
 	  FRE_pulse = 307 + wiggle_v*FRE_direction;
-	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(6-(5-2))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 + (-wiggle_middle + (wiggle_h*(3)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
 	  
 	case 4: 	
-	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(6-(8-2))/3 - wiggle_h)*(-1))*FLB_direction;
+	  FLB_pulse = 307 + (wiggle_middle + (wiggle_h*(0)/3 - wiggle_h)*(-1))*FLB_direction;
 	  FLM_pulse = 307;
 	  FLE_pulse = 307 ;
 	  HLB_pulse = 307 + (-wiggle_middle + wiggle_h*(-1))*HLB_direction;
@@ -1327,7 +1521,7 @@ void Right(int servos_handler)
 	  FRB_pulse = 307 + (wiggle_middle + wiggle_h)*FRB_direction;
 	  FRM_pulse = 307;
 	  FRE_pulse = 307;
-	  HRB_pulse = 307 +(-wiggle_middle + (wiggle_h*(6-(8-2))/3 - wiggle_h))*HRB_direction;
+	  HRB_pulse = 307 +(-wiggle_middle + (wiggle_h*(0)/3 - wiggle_h))*HRB_direction;
 	  HRM_pulse = 307;
 	  HRE_pulse = 307;
 	  break;
@@ -1456,16 +1650,17 @@ void *Walking(void *arg)
   while(interrupt)
   {
     Centre(servo_handler);
-    sleep(1);
+    //Forward(servo_handler);
+    sleep(10);
     /*while(!parameters.ultrimpct)
     {
-      Forward(servo_handler);
+      Backward(servo_handler);
       sleep(0.05);
     }
     sleep (1);
     while(parameters.ultrimpct)
     {
-      Right((int)arg);
+      Backward((int)arg);
       sleep(0.05);
     }*/
   }
@@ -1475,7 +1670,7 @@ void *Walking(void *arg)
 
 int main(int argc, char *argv[])
 {
-pthread_t callThd[3]; /*Number of threads to be used is defined here*/
+pthread_t callThd[5]; /*Number of threads to be used is defined here*/
 pthread_attr_t attr;
 void *status;
 int i;
@@ -1501,40 +1696,47 @@ parameters.global_position =1;
 pthread_attr_init(&attr);
 pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-pth_err = pthread_create(&callThd[0], &attr, Distance, NULL); 
+pth_err = pthread_create(&callThd[0], &attr, Book_keeping, NULL); 
 if (pth_err !=0)
   {
     printf("Thread 1 not created, exiting the program with error: %d\n", pth_err);
     exit(1);
   }
 
-pth_err = pthread_create(&callThd[1], &attr, Walking, (void *) parameters_servo.servos); 
+pth_err = pthread_create(&callThd[1], &attr, Distance, NULL); 
 if (pth_err !=0)
   {
     printf("Thread 2 not created, exiting the program with error: %d\n", pth_err);
     exit(1);
   }
-
-pth_err = pthread_create(&callThd[2], &attr, Camera, NULL); 
+  
+pth_err = pthread_create(&callThd[2], &attr, MPU6050_DATA, NULL); 
 if (pth_err !=0)
   {
     printf("Thread 3 not created, exiting the program with error: %d\n", pth_err);
     exit(1);
   }
 
+pth_err = pthread_create(&callThd[3], &attr, Camera, NULL); 
+if (pth_err !=0)
+  {
+    printf("Thread 4 not created, exiting the program with error: %d\n", pth_err);
+    exit(1);
+  }
+  
+pth_err = pthread_create(&callThd[4], &attr, Walking, (void *) parameters_servo.servos); 
+if (pth_err !=0)
+  {
+    printf("Thread 5 not created, exiting the program with error: %d\n", pth_err);
+    exit(1);
+  }
+
 while(interrupt)
 {
-/*Printing parameters*/
-/*printf("Parameters.dr == %d\n", parameters.dr);
-printf("Parameters.dl == %d\n", parameters.dl);
-printf("Parameters.distance == %lf\n ", parameters.distance);
-printf("Parameters.ultrimpct == %d\n ", parameters.ultrimpct);
-printf("Parameters.block == %d\n ", parameters.block);*/
 
   sleep(100);
-
 }
-for(i=0;i<3;i++) 
+for(i=0;i<5;i++) 
     {
       pthread_join(callThd[i], &status);
     }
@@ -1542,6 +1744,8 @@ for(i=0;i<3;i++)
   i2cWriteByteData(parameters_servo.servos, 0xFD, 0x10); /* Shutting down all channels */
   i2cWriteByteData(parameters_servo.servos, 0x00, 0x00); /* Reset */
   i2cClose(parameters_servo.servos);
+  i2cClose(parameters.MPU6050);
+  fclose(parameters.f);
   gpioTerminate();
     
   exit(0);
