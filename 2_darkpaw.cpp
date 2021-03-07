@@ -94,11 +94,12 @@ void *Book_keeping(void *arg)
   struct tm *t;
   FILE *f;
   
-  f = fopen("record_new.csv", "w+");
+  f = fopen("record.csv", "w+");
   if (f == NULL)
     {
-      printf("Error opening file!\n");
-      exit(1);
+      printf("Error opening file! Quitting Book_keeping thread\n");
+      interrupt = 0;
+      //exit(1);
     }
   parameters.f = f;
   while(interrupt)
@@ -258,8 +259,9 @@ void *MPU6050_DATA(void *arg)
   else
     {
       /* No PI connection to I2C slave 0x68 */
-      printf("Open I2C to slave 0x68 failed. Error code:  %d\n", MPU6050);
-      exit(MPU6050);
+      printf("Open I2C to slave 0x68 failed. Quitting MPU6050 thread Error code:  %d\n", MPU6050);
+      interrupt = 0;
+      //exit(MPU6050);
     }
   parameters.MPU6050 = MPU6050;
   
@@ -339,6 +341,8 @@ void *MPU6050_DATA(void *arg)
     }
     gyro_z = gyro_z/GYRO_SCALE_MODIFIER_500DEG;
     parameters.gyro_z = gyro_z;
+    
+    usleep(100000);
     
     /*printf("Accelerometer X:  %f\n", acce_x);
     printf("Gyro X:  %f\n", gyro_x);
@@ -434,8 +438,9 @@ void Init_Pigpio(void)
   if (Init < 0)
     {
       /* pigpio initialisation failed */
-      printf("Pigpio initialisation failed. Error code:  %d\n", Init);
-      exit(Init);
+      printf("Pigpio initialisation failed. Finishing Program Error code:  %d\n", Init);
+      interrupt = 0;
+      //exit(Init);
     }
   else
     {
@@ -462,8 +467,9 @@ int Restart_PCA9685(void)
   else
     {
       /* No PI connection to I2C slave 40 */
-      printf("Open I2C to slave 0x40 failed. Error code:  %d\n", servos);
-      exit(servos);
+      printf("Open I2C to slave 0x40 failed. Quitting Servos thread Error code:  %d\n", servos);
+      interrupt = 0;
+      //exit(servos);
     }
   oldmode = i2cReadByteData(servos, 0x00); /* getting current mode */
   newmode = (oldmode & 0xEF); /* wake up definition */
