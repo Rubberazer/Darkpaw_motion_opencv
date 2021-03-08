@@ -8,6 +8,7 @@ Probably at the end of the process I will be lacking computer power again, c'est
 The robot itself can be found here: https://www.adeept.com/adeept-darkpaw-bionic-quadruped-spider-robot-kit-for-raspberry-pi-4-3-model-b-b-2b-stem-crawling-robot-opencv-tracking-self-stabilizing_p0125_s0035.html
 
 It is a cool toy and the provided HAT supports connecting some additional stuff if you wanted too, I equipped the toy with a Raspberry Pi 4 with 8 Gigas so it should be OKish even for the OpenCV stuff, as a basis to control the GPIO I am using the famous PIGPIO library wich always works first time, really good stuff that can be found here: http://abyz.me.uk/rpi/pigpio/
+
 08/03/2021: Added PID regulator to compensate drifting and to steer the robot, working with the gyroscope data as feedback to the PID. 
 
 
