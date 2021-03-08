@@ -61,7 +61,7 @@ typedef struct
   float PID_out;
   float PID_left;
   float PID_right;
-  float PID_measurement[30]; /* For angle rolling average */
+  float PID_measurement[20]; /* For angle rolling average */
   
 } SERVOS_PARAMETERS;
 
@@ -110,7 +110,7 @@ void *PID(void *arg)
   //float derivative = 0;
   
   /* Controller intput */
-  float measurement[30] = {0};
+  float measurement[20] = {0};
   
   /* Controller output */
   float out = 0;
@@ -127,7 +127,7 @@ void *PID(void *arg)
   while(interrupt)
   {
     
-    for (int i = 0; i < 30; i++) 
+    for (int i = 0; i < 20; i++) 
      {
       measurement[i] = parameters_servo.PID_measurement[i];
        if (i>0)
@@ -348,7 +348,7 @@ void *MPU6050_DATA(void *arg)
   int gyro_z_H = 0;
   int gyro_z_L = 0;
   float gyro_z = 0;
-  int count_30 = 0;
+  int count_20 = 0;
 
   /* Opening the conenction to the I2C slave */
   MPU6050 = i2cOpen(1,0x68,0);
@@ -444,11 +444,11 @@ void *MPU6050_DATA(void *arg)
     gyro_z = gyro_z/GYRO_SCALE_MODIFIER_250DEG;
     gyro_z = gyro_z - 8.8; /*this is to correct an 8.6 offset detected on this axis */
     parameters.gyro_z = gyro_z;
-    parameters_servo.PID_measurement[count_30] = gyro_z;
-    count_30++;
-    if (count_30>=30)
+    parameters_servo.PID_measurement[count_20] = gyro_z;
+    count_20++;
+    if (count_20>=30)
       {
-	count_30 = 0;
+	count_20 = 0;
       }
     usleep(100000);
     
