@@ -44,6 +44,8 @@ typedef struct
   float gyro_x; /* Gyroscope X axis */ 
   float gyro_y; /* Gyroscope y axis */ 
   float gyro_z; /* Gyroscope z axis */ 
+  float camera_x; /* This is the x axis of the target coming from the camera */
+  int seek; /* This is the flag to start seeking */
   FILE *f;
   
 } PARAM;
@@ -101,8 +103,8 @@ void *PID(void *arg)
 
 {
   /* Controller gains */
-  const float Kp = 7;
-  const float Ki = 4;
+  const float Kp = 4;
+  const float Ki = 0.5;
   //const float Kd = 0;
   
   /* Sample time (in seconds) */
@@ -122,7 +124,7 @@ void *PID(void *arg)
   float out = 0;
   
   /* Controller setpoint */
-  const float setpoint = 2;
+  const float setpoint = 320;
   
   /* Controller error */
   float error = 0;
@@ -142,15 +144,15 @@ void *PID(void *arg)
 	}
      } 
     measurement[0] = measurement[0]/20; */
-    measurement[0] = parameters.gyro_z; 
+    measurement[0] = parameters.camera_x; 
     error = setpoint - measurement[0];
     if (error>0)
       {
-	left_flag = 0;
+	left_flag = 1;
       }
     else
       {
-	left_flag = 1;
+	left_flag = 0;
       }
     /* Proportional */
     proportional = Kp * error;
@@ -160,16 +162,16 @@ void *PID(void *arg)
     prevError = error;
     
     out = fabs(proportional + integral);
-    out = 1 - out/180;
+    out = 1 - out/320;
     
     if (out < 0.25)
       {
       out = 0.25;
       }
     parameters_servo.PID_out = out;
-    if ((-1.5 > error) || (error > 1.5))
+    if ((-20 > error) || (error > 20))
       {
-	if (left_flag == 0)
+	if (left_flag == 1)
 	  {
 	    parameters_servo.PID_right = out;
 	    parameters_servo.PID_left = 1;
@@ -187,12 +189,12 @@ void *PID(void *arg)
     }
     usleep(100000);
     
-    /*printf("Ultraimpct: %d \n", parameters.ultrimpct);
+    /*printf("Ultraimpct: %d \n", parameters.ultrimpct); 
     printf("PID_measurement: %f \n", measurement[0]);
     printf("PID_error: %f \n", error);
     printf("PID_out: %f \n", out);
     printf("PID_out_left: %f \n",parameters_servo.PID_left);
-    printf("PID_out_right: %f \n",parameters_servo.PID_right);*/
+    printf("PID_out_right: %f \n",parameters_servo.PID_right); */
   }
   pthread_exit(NULL);
 }
@@ -487,7 +489,7 @@ void *Camera(void *arg)
     //vector<Point> approx;
     //vector<Vec4i> hierarchy;
     Ptr<BackgroundSubtractor> pMOG2; /* MOG2 Background subtractor */
-    pMOG2 = createBackgroundSubtractorMOG2(2000,20,true); /* Create MOG2 Background Subtractor object */
+    pMOG2 = createBackgroundSubtractorMOG2(500,40,false); /* Create MOG2 Background Subtractor object */
     
     Ptr<Tracker> tracker; /* Create Pointer to tracker object */
     tracker = TrackerCSRT::create(); /* Create the tracker object */
@@ -496,8 +498,8 @@ void *Camera(void *arg)
 
     /*--- INITIALIZE VIDEOCAPTURE */
     VideoCapture cap;
-    cap.set(CAP_PROP_FRAME_WIDTH,800); /*set camera resolution */
-    cap.set(CAP_PROP_FRAME_HEIGHT,600); /* set camera resolution */
+    //cap.set(CAP_PROP_FRAME_WIDTH,640); /*set camera resolution */
+    //cap.set(CAP_PROP_FRAME_HEIGHT,480); /* set camera resolution */
     cap.set(CAP_PROP_BUFFERSIZE, 3);
     int deviceID = 0;             // 0 = open default camera
     int apiID = cv::CAP_ANY;      // 0 = autodetect default API
@@ -509,10 +511,11 @@ void *Camera(void *arg)
 	cerr << "ERROR! Unable to open camera, exiting thread\n";
 	pthread_exit(NULL);
       }
-   
+    bool ok = false;
     int detection = 1;
     int tracking = 1;
     Rect2d mr;
+    Point centre;
     before = clock(); /* allow time to settle the movement detector when start frame capture camera*/
     while(interrupt)
     {
@@ -521,6 +524,7 @@ void *Camera(void *arg)
 	
 	while (detection)
 	{
+	  parameters.seek = 0;
 	  /* wait for a new frame from camera and store it into 'frame' */
 	  cap.read(frame);
 	  /* check if we succeeded */
@@ -534,7 +538,7 @@ void *Camera(void *arg)
 
 	  pMOG2->apply(framegray, fgMaskMOG2, 0.0035); /* Update the MOG2 background model based on the current frame */
 	  
-	  findContours(fgMaskMOG2, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+	  findContours(fgMaskMOG2, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE); //RETR_EXTERNAL
 	  
 	    /* test each contour for bigger area on screen) */
 	  for( size_t i = 0; i < contours.size(); i++ )
@@ -546,29 +550,27 @@ void *Camera(void *arg)
 		{
 		  contours_chosen = i;
 		}
-
 	      }
-	      
 	    }
 	  after = clock();
-	  if (fabs(contourArea(contours[contours_chosen]))>20000 && (((double)(after-before)/(double)CLOCKS_PER_SEC)>20 ))
+	  if (fabs(contourArea(contours[contours_chosen]))>800 && (((double)(after-before)/(double)CLOCKS_PER_SEC)>10 ))
 	    {
 	    mr= boundingRect(contours[contours_chosen]);
 	    mr.width = mr.width;
 	    mr.height = mr.height;
-	    Point centre;
 	    float scale = 1.0;
 	    centre.x = cvRound((mr.x + mr.width*0.5)*scale);
 	    centre.y = cvRound((mr.y + mr.height*0.5)*scale);
 	    detection = 0;
 	    tracking = 1;
+	    tracker->init(frame, mr);
 	    }
 	    imshow("FG Mask MOG 2", fgMaskMOG2); /*Show the MOG2 foreground mask */
 	    /* show live and wait */
 	    waitKey(1);
 	}
-
-	tracker->init(frame, mr);
+	
+	//tracker->init(frame, mr);
 	destroyWindow("FG Mask MOG 2");
 	while (tracking)
 	{
@@ -580,17 +582,27 @@ void *Camera(void *arg)
             printf("ERROR! blank frame grabbed\n");
             break;
 	  }
-	  
-	  bool ok = tracker->update(frame, mr);
+	  //Mat roi = frame(mr);
+	  //tracker->init(frame, mr);
+	  ok = tracker->update(frame, mr);
+	  //printf("OK: %d\n",ok);
 	  if (ok)
 	    {
 	      rectangle(frame, mr, Scalar( 255, 0, 0 ), 2, 1 );
+	      mr.width = mr.width;
+	      mr.height = mr.height;
+	      float scale = 1.0;
+	      centre.x = cvRound((mr.x + mr.width*0.5)*scale);
+	      centre.y = cvRound((mr.y + mr.height*0.5)*scale);
+	      parameters.camera_x = centre.x;
+	      parameters.seek = 1;
 	    }
 	  else
 	    {
-	    putText(frame, "Tracking failure detected", Point(100,80), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(0,0,255),2);
+	    //putText(frame, "Tracking failure detected", Point(100,80), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(0,0,255),2);
 	    detection = 1;
 	    tracking = 0;
+	    parameters.seek = 0;
 	    }
 	      
 	  //putText(frame, "TopLeft", Point(0, 0), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0)); /* this one is the top-left corner */
@@ -602,6 +614,7 @@ void *Camera(void *arg)
 	  waitKey(1);
 	}
 	destroyWindow("Normal");
+	before = clock();
     }
   destroyAllWindows();
   cap.release();
@@ -1835,19 +1848,19 @@ void *Walking(void *arg)
   while(interrupt)
   {
     Centre(servo_handler);
-    sleep(1);
     
-    /*while(!parameters.ultrimpct)
-    {
-      Forward(servo_handler);
-      sleep(0.05);
-    }
-    sleep (1);
-    while(parameters.ultrimpct)
-    {
-      Backward((int)arg);
-      sleep(0.05);
-    } */
+      while(!parameters.ultrimpct && parameters.seek)
+      {
+	Forward(servo_handler);
+	//sleep(0.05);
+      }
+      sleep (1);
+      while(parameters.ultrimpct)
+      {
+	Backward((int)arg);
+	//sleep(0.05);
+      } 
+    
   }
   
   pthread_exit(NULL);
@@ -1868,14 +1881,16 @@ Init_Pigpio();
 /* control signal() here IMPORTANT, if this is called before initializing the pigpio it will NOT work, pigpio initializes all flags */
 signal(SIGINT, inthandler);
 
+
 /* Restart the PCA9685 here */
 parameters_servo.servos = Restart_PCA9685();
 
 /* Setting up frequency the PCA9685 here */
 Init_PCA9685(parameters_servo.servos);
 
-/* Initializing the parameters.global_position to 1 */
+/* Initializing global parameters*/
 parameters.global_position =1;
+parameters.seek = 0;
 	
 /* Create threads to start seeing, will not use attributes on this occasion*/  
 pthread_attr_init(&attr);
