@@ -541,7 +541,7 @@ void *Camera(void *arg)
 	  findContours(fgMaskMOG2, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE); //RETR_EXTERNAL
 	  
 	    /* test each contour for bigger area on screen) */
-	  for( size_t i = 0; i < contours.size(); i++ )
+	  for( unsigned long long i = 0; i < contours.size(); i++ ) //size_t
 	    {
 	      contours_chosen = 0;
 	      if (i>0)
@@ -614,6 +614,8 @@ void *Camera(void *arg)
 	  waitKey(1);
 	}
 	destroyWindow("Normal");
+	tracker.release();
+	tracker = TrackerCSRT::create();
 	before = clock();
     }
   destroyAllWindows();
