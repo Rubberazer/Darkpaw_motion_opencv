@@ -13,7 +13,7 @@ It is a cool toy and the provided HAT supports connecting some additional stuff 
 
 11/03/2021: Added an OpenCV MOG2 background substractor and a tracker, currently using a CSRT but it could be easily replaced, the background substractor detects movement and focuses on the biggest area to pass that rectangle to the tracker so it gets initialized, it works. FPS are rubbish but still is able to follow slow motion objects e.g passing hand.
 
-Compile: ./2_darkpaw.sh
+Compile: make
 Execute: sudo ./2_darkpaw
 
 
