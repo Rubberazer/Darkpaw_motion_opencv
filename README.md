@@ -10,6 +10,10 @@ The robot itself can be found here: https://www.adeept.com/adeept-darkpaw-bionic
 It is a cool toy and the provided HAT supports connecting some additional stuff if you wanted too, I equipped the toy with a Raspberry Pi 4 with 8 Gigas so it should be OKish even for the OpenCV stuff, as a basis to control the GPIO I am using the famous PIGPIO library wich always works first time, really good stuff that can be found here: http://abyz.me.uk/rpi/pigpio/
 
 08/03/2021: Added PID regulator to compensate drifting and to steer the robot, working with the gyroscope data as feedback to the PID. 
+
 11/03/2021: Added an OpenCV MOG2 background substractor and a tracker, currently using a CSRT but it could be easily replaced, the background substractor detects movement and focuses on the biggest area to pass that rectangle to the tracker so it gets initialized, it works. FPS are rubbish but still is able to follow slow motion objects e.g passing hand.
+
+Compile: ./2_darkpaw.sh
+Execute: sudo ./2_darkpaw
 
 
