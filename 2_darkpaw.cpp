@@ -1,7 +1,6 @@
 #include <iostream>	/* for standard I/O in C++ */
 #include <cstdio>	/* for printf, cstdio in C++ */
-#include <cstdint>	/* for uint64 definition NOT TO BE USED WITH OPENCV IT WILL THROW EXCEPTION: error(-211) 
-see: https://github.com/opencv/opencv/issues/7573*/
+#include <cstdint>	/* for uint64 definition */
 #include <cstdlib>	/* for exit() definition */
 #define _BSD_SOURCE	/* this one makes time.h to work properly */
 #include <sys/time.h>	/* for clock_gettime */
@@ -609,7 +608,8 @@ void *Camera(void *arg)
 	      try
 	      {
 		tracker->init(frame, mr); /* This is a dirty trick necessary for when the bounding rectangle goes bananas,
-		I believe that is due to either x,y being out of screen, needs investigation */
+		I believe that is due to either x,y being out of screen, needs investigation exception thrown is:  error(-211) 
+		see: https://github.com/opencv/opencv/issues/7573 */
 	      }
 	      catch(const cv::Exception& ex) 
 	      {
