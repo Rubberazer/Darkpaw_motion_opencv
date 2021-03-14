@@ -7,7 +7,7 @@ Basically replaced the original maker's python code by my own C code -with a pin
 
 11/03/2021: Added an OpenCV MOG2 background substractor and a tracker, currently using a CSRT but it could be easily replaced, the background substractor detects movement and focuses on the biggest area to pass that rectangle to the tracker so it gets initialized, it works. FPS are rubbish but still is able to follow slow motion objects e.g passing hand.
 
-14/03/2021: The robot is finally able to follow the detected object, the magic is broken when the CSRT threshold is cross and from that point the robot falls back to motion detection until it finds a new target to track, in the mean time the robot stops.
+14/03/2021: The robot is finally able to follow the detected object, the magic is broken when the CSRT threshold is crossed and from that point the robot falls back to motion detection until it finds a new target to track, in the mean time the robot stops.
 
 The robot itself can be found here: https://www.adeept.com/adeept-darkpaw-bionic-quadruped-spider-robot-kit-for-raspberry-pi-4-3-model-b-b-2b-stem-crawling-robot-opencv-tracking-self-stabilizing_p0125_s0035.html
 
