@@ -187,10 +187,10 @@ void *PID(void *arg)
 	    }
 	}
       else
-      {
-	parameters_servo.PID_left = 1;
-	parameters_servo.PID_right = 1;
-      }
+	{
+	  parameters_servo.PID_left = 1;
+	  parameters_servo.PID_right = 1;
+	}
       usleep(100000);
     }
       
