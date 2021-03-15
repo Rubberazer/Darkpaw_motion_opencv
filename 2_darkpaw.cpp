@@ -1,6 +1,7 @@
 #include <iostream>	/* for standard I/O in C++ */
 #include <cstdio>	/* for printf, cstdio in C++ */
-#include <cstdint>	/* for uint64 definition */
+#include <cstdint>	/* for uint64 definition NOT TO BE USED WITH OPENCV IT WILL THROW EXCEPTION: error(-211) 
+see: https://github.com/opencv/opencv/issues/7573*/
 #include <cstdlib>	/* for exit() definition */
 #define _BSD_SOURCE	/* this one makes time.h to work properly */
 #include <sys/time.h>	/* for clock_gettime */
@@ -67,6 +68,7 @@ typedef struct
   int HRE_pulse_old;
   int servos; /*this one is the PCA9685 handler returned by I2Copen() */
   int forward;
+  int PID_start;
   float PID_out;
   float PID_left;
   float PID_right;
@@ -135,67 +137,69 @@ void *PID(void *arg)
   
   while(interrupt)
   {
-    
-    /*for (int i = 0; i < 20; i++) 
-     {
-      measurement[i] = parameters_servo.PID_measurement[i];
-       if (i>0)
-	{
-	  measurement[0] += measurement[i];
-	}
-     } 
-    measurement[0] = measurement[0]/20; */
-    measurement[0] = parameters.camera_x; 
-    error = setpoint - measurement[0];
-    if (error>0)
-      {
-	left_flag = 1;
-      }
-    else
-      {
-	left_flag = 0;
-      }
-    /* Proportional */
-    proportional = Kp * error;
-    
-    /* Integral */
-    integral = integral + 0.5 * Ki * T * (error + prevError);
-    prevError = error;
-    
-    out = fabs(proportional + integral);
-    out = 1 - out/320;
-    
-    if (out < 0.25)
-      {
-      out = 0.25;
-      }
-    parameters_servo.PID_out = out;
-    if ((-20 > error) || (error > 20))
-      {
-	if (left_flag == 1)
-	  {
-	    parameters_servo.PID_right = out;
-	    parameters_servo.PID_left = 1;
-	  }
-	else 
-	  {
-	    parameters_servo.PID_left = out;
-	    parameters_servo.PID_right = 1;
-	  }
-      }
-    else
+    while(parameters_servo.PID_start)
     {
-      parameters_servo.PID_left = 1;
-      parameters_servo.PID_right = 1;
+      /*for (int i = 0; i < 20; i++) 
+       {
+	measurement[i] = parameters_servo.PID_measurement[i];
+	 if (i>0)
+	  {
+	    measurement[0] += measurement[i];
+	  }
+       } 
+      measurement[0] = measurement[0]/20; */
+      measurement[0] = parameters.camera_x; 
+      error = setpoint - measurement[0];
+      if (error>0)
+	{
+	  left_flag = 1;
+	}
+      else
+	{
+	  left_flag = 0;
+	}
+      /* Proportional */
+      proportional = Kp * error;
+      
+      /* Integral */
+      integral = integral + 0.5 * Ki * T * (error + prevError);
+      prevError = error;
+      
+      out = fabs(proportional + integral);
+      out = 1 - out/320;
+      
+      if (out < 0.60)
+	{
+	out = 0.60;
+	}
+      parameters_servo.PID_out = out;
+      if ((-20 > error) || (error > 20))
+	{
+	  if (left_flag == 1)
+	    {
+	      parameters_servo.PID_right = out;
+	      parameters_servo.PID_left = 1;
+	    }
+	  else 
+	    {
+	      parameters_servo.PID_left = out;
+	      parameters_servo.PID_right = 1;
+	    }
+	}
+      else
+      {
+	parameters_servo.PID_left = 1;
+	parameters_servo.PID_right = 1;
+      }
+      usleep(100000);
     }
-    usleep(100000);
-    
-    /*printf("Ultraimpct: %d \n", parameters.ultrimpct); 
-    printf("PID_measurement: %f \n", measurement[0]);
-    printf("PID_error: %f \n", error);
-    printf("PID_out: %f \n", out);
-    printf("PID_out_left: %f \n",parameters_servo.PID_left);
-    printf("PID_out_right: %f \n",parameters_servo.PID_right); */
+      
+      /*printf("Ultraimpct: %d \n", parameters.ultrimpct); 
+      printf("PID_measurement: %f \n", measurement[0]);
+      printf("PID_error: %f \n", error);
+      printf("PID_out: %f \n", out);
+      printf("PID_out_left: %f \n",parameters_servo.PID_left);
+      printf("PID_out_right: %f \n",parameters_servo.PID_right); */
   }
   pthread_exit(NULL);
 }
@@ -525,7 +529,7 @@ void *Camera(void *arg)
     params.histogram_bins = 16;
     params.background_ratio = 2; /* Default value =2 */
     params.histogram_lr = 0.04f;
-    params.psr_threshold = 0.08f; /* Default value= 0.035 CSRT Tracker parameter to make it more sensible to false positives */
+    params.psr_threshold = 0.06f; /* Default value= 0.035 CSRT Tracker parameter to make it more sensible to false positives */
     
     Ptr<Tracker> tracker; /* Create Pointer to tracker object */
     tracker = TrackerCSRT::create(params); /* Create the tracker object */
@@ -536,7 +540,7 @@ void *Camera(void *arg)
     VideoCapture cap;
     cap.set(CAP_PROP_FRAME_WIDTH,640); /*set camera resolution */
     cap.set(CAP_PROP_FRAME_HEIGHT,480); /* set camera resolution */
-    cap.set(CAP_PROP_BUFFERSIZE, 3); /* To store only the last 3 frames */
+    cap.set(CAP_PROP_BUFFERSIZE, 5); /* To store only the last 5 frames */
     int deviceID = 0;             // 0 = open default camera
     int apiID = cv::CAP_ANY;      // 0 = autodetect default API
     // open selected camera using selected API
@@ -589,37 +593,28 @@ void *Camera(void *arg)
 	    }
 	  after = clock();
 	 
-	  if ((contourArea(contours[contours_chosen]))>1000 && ((double)(after-before)/(double)CLOCKS_PER_SEC)>10 )
+	  if ((contourArea(contours[contours_chosen]))>800 && ((double)(after-before)/(double)CLOCKS_PER_SEC)>10)
 	    {
 	      approxPolyDP(contours[contours_chosen], approx, arcLength(contours[contours_chosen], true)*0.02, true);
-
+	     
 	      mr = boundingRect(approx); //mr= boundingRect(approx);
-	      /* mr.width = mr.width;
-	      mr.height = mr.height;
-	      float scale = 1.0;
-	      centre.x = cvRound((mr.x + mr.width*0.5)*scale); 
-	      centre.y = cvRound((mr.y + mr.height*0.5)*scale); 
-	      printf("mr.x= %f \n",mr.x);
-	      printf("mr.y= %f \n",mr.y);
-	      printf("mr.width= %f \n",mr.width);
-	      printf("mr.height= %f \n",mr.height);*/
-	      detection = 0;
-	      tracking = 1;
-	      try
-	      {
-		tracker->init(frame, mr); /* This is a dirty trick necessary for when the bounding rectangle goes bananas,
-		I believe that is due to either x,y being out of screen, needs investigation exception thrown is:  error(-211) 
-		see: https://github.com/opencv/opencv/issues/7573 */
-	      }
-	      catch(const cv::Exception& ex) 
-	      {
-		/*cerr << "the shit is here \n";
+	      if (mr.x>0 && mr.y>0)
+		{
+		/* mr.width = mr.width;
+		mr.height = mr.height;
+		float scale = 1.0;
+		centre.x = cvRound((mr.x + mr.width*0.5)*scale); 
+		centre.y = cvRound((mr.y + mr.height*0.5)*scale); 
 		printf("mr.x= %f \n",mr.x);
 		printf("mr.y= %f \n",mr.y);
 		printf("mr.width= %f \n",mr.width);
-		printf("mr.height= %f \n",mr.height); */
-		continue;
-	      }
+		printf("mr.height= %f \n",mr.height);*/
+		detection = 0;
+		tracking = 1;
+	      
+		tracker->init(frame, mr); 
+		parameters_servo.PID_start = 1;
+		}
 	  
 	    }
 	  
@@ -660,10 +655,11 @@ void *Camera(void *arg)
 	    detection = 1;
 	    tracking = 0;
 	    parameters.seek = 0;
+	    parameters_servo.PID_start = 0;
 	    }
 	      
 	  //putText(frame, "TopLeft", Point(0, 0), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0)); /* this one is the top-left corner */
-	  //putText(frame, "BottomRight", Point(630, 470), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0)); /* this one is the bottom-right corner */
+	  //putText(frame, "BottomRight", Point(640, 480), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0)); /* this one is the bottom-right corner */
 	  //putText(frame, "Centre", Point(320, 240), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0)); /* this one is the bottom-right corner */ 
 	  
 	  imshow("Normal", frame); /*Track detected object */
@@ -1951,6 +1947,7 @@ Init_PCA9685(parameters_servo.servos);
 /* Initializing global parameters*/
 parameters.global_position =1;
 parameters.seek = 0;
+parameters_servo.PID_start = 0;
 	
 /* Create threads to start seeing, will not use attributes on this occasion*/  
 pthread_attr_init(&attr);
