@@ -1,7 +1,6 @@
 #include <iostream>	/* for standard I/O in C++ */
 #include <cstdio>	/* for printf, cstdio in C++ */
-#include <cstdint>	/* for uint64 definition NOT TO BE USED WITH OPENCV IT WILL THROW EXCEPTION: error(-211) 
-see: https://github.com/opencv/opencv/issues/7573*/
+#include <cstdint>	/* for uint64 definition */
 #include <cstdlib>	/* for exit() definition */
 #define _BSD_SOURCE	/* this one makes time.h to work properly */
 #include <sys/time.h>	/* for clock_gettime */
@@ -106,19 +105,24 @@ void *PID(void *arg)
 
 {
   /* Controller gains */
-  const float Kp = 4;
+  const float Kp = 3.5;
   const float Ki = 0.5;
-  //const float Kd = 0;
+  const float Kd = 0.25;
   
   /* Sample time (in seconds) */
   const float T = 0.1;
   
+  /* Derivative filter tau (in seconds) */
+  const float Tau = 0.02;
+  
   /* Controller "memory" */
   float prevError = 0;			/* Required for integrator */
-  //float prevMeasurement = 0;		/* Required for differentiator */
+  float prevIntegral = 0;		/* Required for integrator */
+  //float prevMeasurement = 0;		/* This could be used for derivative instead of error/prevError */
+  float prevDerivative = 0;		/* Required for differentiator */
   float proportional = 0;
   float integral = 0;
-  //float derivative = 0;
+  float derivative = 0;
   
   /* Controller intput */
   float measurement[20] = {0};
@@ -162,16 +166,30 @@ void *PID(void *arg)
       proportional = Kp * error;
       
       /* Integral */
-      integral = integral + 0.5 * Ki * T * (error + prevError);
+      integral = prevIntegral + 0.5 * Ki * T * (error + prevError);
+      
+      
+      /* Derivative */
+      derivative = (2.0*Kd*(error-prevError)+(2.0*Tau-T)*prevDerivative)/(2.0*Tau+T);
+      
+      /* Saving for next iteration */
+      prevDerivative = derivative;
+      prevIntegral = integral;
+      //prevMeasurement = measurement[0];
       prevError = error;
       
-      out = fabs(proportional + integral);
-      out = 1 - out/320;
+      out = fabs(proportional + integral + derivative);
+      out = 1-out/320;
       
-      if (out < 0.60)
+      if (out < 0.50)
 	{
-	out = 0.60;
+	out = 0.50;
 	}
+      if (out > 1)
+	{
+	out = 1;
+	}
+      
       parameters_servo.PID_out = out;
       if ((-20 > error) || (error > 20))
 	{
@@ -225,8 +243,8 @@ void *Book_keeping(void *arg)
     time(&now);
     t = localtime(&now);
     strftime(s, 100, "%H:%M:%S", t);
-    fprintf(f,"%s, %f, %f, %f, %f, %f, %f, %f\n",s ,parameters.distance, parameters.acce_x, parameters.acce_y, 
-      parameters.acce_z, parameters.gyro_x, parameters.gyro_y, parameters.gyro_z);
+    fprintf(f,"%s, %f, %f, %f, %f, %f, %f, %f, %f\n",s ,parameters.distance, parameters_servo.PID_out, parameters.acce_x, 
+	    parameters.acce_y, parameters.acce_z, parameters.gyro_x, parameters.gyro_y, parameters.gyro_z);
     usleep(250000);
   }
   fclose(f);
@@ -499,7 +517,7 @@ void *Camera(void *arg)
     Point centre;
     
     Ptr<BackgroundSubtractor> pMOG2; /* MOG2 Background subtractor */
-    pMOG2 = createBackgroundSubtractorMOG2(100,30,false); /* Create MOG2 Background Subtractor object */
+    pMOG2 = createBackgroundSubtractorMOG2(100,10,false); /* Create MOG2 Background Subtractor object */
     
     TrackerCSRT::Params params = TrackerCSRT::Params(); /* Creating parameters for the tracker so we are able to change threshold */
     /* Full list of parameters */
@@ -507,9 +525,9 @@ void *Camera(void *arg)
     params.use_segmentation = true;
     params.use_hog = true;
     params.use_color_names = true;
-    params.use_gray = true; /* orginally true */
-    params.use_rgb = false; /* originally false */
-    params.window_function = "hann"; /* originally= hann, but others are possible: Window function: "hann", "cheb", "kaiser"*/
+    params.use_gray = false; /* orginally true */
+    params.use_rgb = true; /* originally false */
+    params.window_function = "cheb"; /* originally= hann, but others are possible: Window function: "hann", "cheb", "kaiser"*/
     params.kaiser_alpha = 3.75f;
     params.cheb_attenuation = 45;
     params.padding = 3.0f;
@@ -520,7 +538,7 @@ void *Camera(void *arg)
     params.num_hog_channels_used = 18;
     params.filter_lr = 0.02f;
     params.weights_lr = 0.02f;
-    params.admm_iterations = 4;
+    params.admm_iterations = 6; // originally 4
     params.number_of_scales = 33;
     params.scale_sigma_factor = 0.250f;
     params.scale_model_max_area = 512.0f;
@@ -529,7 +547,7 @@ void *Camera(void *arg)
     params.histogram_bins = 16;
     params.background_ratio = 2; /* Default value =2 */
     params.histogram_lr = 0.04f;
-    params.psr_threshold = 0.06f; /* Default value= 0.035 CSRT Tracker parameter to make it more sensible to false positives */
+    params.psr_threshold = 0.07f; /* Default value= 0.035 CSRT Tracker parameter to make it more sensible to false positives */
     
     Ptr<Tracker> tracker; /* Create Pointer to tracker object */
     tracker = TrackerCSRT::create(params); /* Create the tracker object */
@@ -572,6 +590,18 @@ void *Camera(void *arg)
 	  }
 	  /* colour to gray conversion */
 	  cvtColor(frame, framegray, COLOR_RGB2GRAY); 
+	  GaussianBlur(framegray, framegray, Size(7, 7), 1.5, 1.5);
+	  medianBlur(framegray, framegray, 5);
+	  /* Adaptive Guassian Threshold is to detect sharp edges in the Image. For more information */
+	  //adaptiveThreshold(framegray, framegray, 255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY, 7, 4);
+	
+	  /* Eroding image*/
+	  //erode(framegray, framegray, getStructuringElement(MORPH_RECT, Size(5, 5)));
+	  erode(framegray, framegray, getStructuringElement(MORPH_RECT, Size(10, 10)), Point(-1, -1),2,BORDER_DEFAULT);
+	  
+	  /* Dilate image*/
+	  //dilate(framegray, framegray, getStructuringElement(MORPH_RECT, Size(5, 5));
+	  dilate(framegray, framegray, getStructuringElement(MORPH_RECT, Size(12, 12)), Point(-1, -1),2,BORDER_DEFAULT);
 	  
 	  pMOG2->apply(framegray, fgMaskMOG2, 0.1); /* Update the MOG2 background model based 
 	  on the current frame, 0=background model not updated, 1=background model is completely reinitialized from the 
@@ -585,7 +615,7 @@ void *Camera(void *arg)
 	      contours_chosen = 0;
 	      if (i>0)
 	      {
-		if (fabs(contourArea(contours[i]))> fabs(contourArea(contours[i-1])))
+		if (contourArea(contours[i]) > contourArea(contours[i-1]))
 		{
 		  contours_chosen = i;
 		}
@@ -598,7 +628,8 @@ void *Camera(void *arg)
 	      approxPolyDP(contours[contours_chosen], approx, arcLength(contours[contours_chosen], true)*0.02, true);
 	     
 	      mr = boundingRect(approx); //mr= boundingRect(approx);
-	      if (mr.x>0 && mr.y>0)
+	      if (mr.x>0 && mr.y>0) /* To check if the rectangle is out of screen (long negative),if not it will THROW EXCEPTION: 
+	      error(-211) see: https://github.com/opencv/opencv/issues/7573 */
 		{
 		/* mr.width = mr.width;
 		mr.height = mr.height;
@@ -611,9 +642,11 @@ void *Camera(void *arg)
 		printf("mr.height= %f \n",mr.height);*/
 		detection = 0;
 		tracking = 1;
-	      
+		mr.width = mr.width*1.5;
+		mr.height = mr.height*1.5;
 		tracker->init(frame, mr); 
 		parameters_servo.PID_start = 1;
+		parameters.seek = 1;
 		}
 	  
 	    }
@@ -641,13 +674,10 @@ void *Camera(void *arg)
 	  if (ok)
 	    {
 	      rectangle(frame, mr, Scalar( 255, 0, 0 ), 2, 1 );
-	      mr.width = mr.width;
-	      mr.height = mr.height;
 	      float scale = 1.0;
 	      centre.x = cvRound((mr.x + mr.width*0.5)*scale);
 	      centre.y = cvRound((mr.y + mr.height*0.5)*scale);
 	      parameters.camera_x = centre.x;
-	      parameters.seek = 1;
 	    }
 	  else
 	    {
@@ -1910,7 +1940,7 @@ void *Walking(void *arg)
 	Forward(servo_handler);
 	//sleep(0.05);
       }
-      sleep (1);
+      
       while(parameters.ultrimpct)
       {
 	Backward((int)arg);
