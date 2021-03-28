@@ -17,7 +17,7 @@ It is a cool toy and the provided HAT supports connecting some additional stuff 
 
 Embedded web server used is the famous Mongoose, version 7.2 that can be obtained here: https://github.com/cesanta/mongoose/releases
 
-OpenCV 4.5.0 can be obtained here: https://github.com/opencv/opencv
+OpenCV 4.5.0 (or any other version) can be obtained here: https://github.com/opencv/opencv
 
 Version 2: Detects moving objects and once detected it tracks (and follows) them.
   
