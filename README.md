@@ -9,12 +9,23 @@ Basically replaced the original maker's python code by my own C code -with a pin
 
 14/03/2021: The robot is finally able to follow the detected object, the magic is broken when the CSRT threshold is crossed and from that point the robot falls back to motion detection until it finds a new target to track, in the mean time the robot stops.
 
+28/03/2021: Added an embedded web server based on Mongoose, now the robot stream video straight from its camera showing also de tracked object. Unfortunately the workload finally broke the camels back and it starts to show that the Rasperry 4 is just too short, future potential optimization is required, probably reduce
+
 The robot itself can be found here: https://www.adeept.com/adeept-darkpaw-bionic-quadruped-spider-robot-kit-for-raspberry-pi-4-3-model-b-b-2b-stem-crawling-robot-opencv-tracking-self-stabilizing_p0125_s0035.html
 
 It is a cool toy and the provided HAT supports connecting some additional stuff if you wanted too, I equipped it with a Raspberry Pi 4 with 8 Gigas so it is (almost) enough for the OpenCV stuff, as a basis to control the GPIO I am using the famous PIGPIO library wich always works first time, really good stuff that can be found here: http://abyz.me.uk/rpi/pigpio/
 
-Compile: make
+Version 2: Detects moving objects and once detected it tracks (and follows) them
+  
+  Files: 2_darkpaw.cpp, makefile2
+  
+  Compile: rename 'makefile2' to 'makefile' and type 'make', pigpio and opencv libraries should be installed 
+  Execute: sudo ./2_darkpaw
 
-Execute: sudo ./2_darkpaw
-
+Version 3: Detects moving objects and once detected it tracks (and follows) them, this also incorporates a web server for video streaming
+  
+  Files: 3_darkpaw.cpp, makefile3
+  
+  Compile: rename 'makefile3' to 'makefile' and type 'make', pigpio and opencv libraries should be installed, also mongoose.c and mongoose.h are required 
+  Execute: sudo ./3_darkpaw
 
