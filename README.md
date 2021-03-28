@@ -9,7 +9,7 @@ Basically replaced the original maker's python code by my own C code -with a pin
 
 14/03/2021: The robot is finally able to follow the detected object, the magic is broken when the CSRT threshold is crossed and from that point the robot falls back to motion detection until it finds a new target to track, in the mean time the robot stops.
 
-28/03/2021: Added an embedded web server based on Mongoose, now the robot streams video straight from its camera marking (blue rectangle) the tracked object. Unfortunately the workload finally broke the camels back and it starts to show that the Rasperry 4 is just too short, future potential optimization is required, probabl switch from a CSRT to a MOOSEas a tracker.
+28/03/2021: Added an embedded web server based on Mongoose, now the robot streams video straight from its camera marking (blue rectangle) the tracked object. Unfortunately the workload finally broke the camels back and it starts to show that the Rasperry 4 is just too short, future potential optimization is required, probably switch from a CSRT to a MOOSE tracker.
 
 The robot itself can be found here: https://www.adeept.com/adeept-darkpaw-bionic-quadruped-spider-robot-kit-for-raspberry-pi-4-3-model-b-b-2b-stem-crawling-robot-opencv-tracking-self-stabilizing_p0125_s0035.html
 
