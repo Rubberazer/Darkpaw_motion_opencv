@@ -2018,7 +2018,7 @@ void *Walking(void *arg)
   {
     Centre(servo_handler);
     
-     /* while(!parameters.ultrimpct && parameters.seek)
+     while(!parameters.ultrimpct && parameters.seek)
       {
 	Forward(servo_handler);
       }
@@ -2026,7 +2026,7 @@ void *Walking(void *arg)
       while(parameters.ultrimpct)
       {
 	Backward((int)arg);
-      } */
+      } 
   }
   
   pthread_exit(NULL);
