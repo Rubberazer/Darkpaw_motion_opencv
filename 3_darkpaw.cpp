@@ -2115,7 +2115,7 @@ struct mg_timer t1;
 
 mg_mgr_init(&mgr);
 mg_http_listen(&mgr, "http://0.0.0.0:5000", cb, NULL); /* Accepting connections from any IP (0.0.0.0), TCP port 8888 cant be used as it is in use 
-							by pigpio WTF, full conn string: http://192.168.8.132:5000 */ 
+							by pigpio WTF */ 
 mg_timer_init(&t1, 500, MG_TIMER_REPEAT, timer_callback, &mgr);
 
 while(interrupt)
