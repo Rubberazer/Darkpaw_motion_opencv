@@ -32,7 +32,7 @@ using namespace cv;
 using namespace cv::datasets;
 
 /*The following structure(s) define all the inputs from the sensorial parts and interaction
- with servos, they are meant to act as a global variable for the threads*/
+ with servos, they are meant to act as global variables for the threads*/
 
 typedef struct
 {
@@ -101,7 +101,13 @@ void inthandler(int signum)
   i2cClose(parameters_servo.servos);
   i2cClose(parameters.MPU6050);
   gpioTerminate();
-  fclose(parameters.f);
+  //fclose(parameters.f);
+  printf("Caught signal %d, coming out ...\n", signum);
+  //exit(1);
+}
+
+void inthandler1(int signum) 
+{
   printf("Caught signal %d, coming out ...\n", signum);
   exit(1);
 }
@@ -113,8 +119,8 @@ void inthandler(int signum)
 static void cb(struct mg_connection *c, int ev, void *ev_data, void *fn_data) 
 {
   if (ev == MG_EV_HTTP_MSG) {
-    /*struct mg_http_message *hm = (struct mg_http_message *) ev_data; //(struct mg_http_message *) ev_data;
-    if (mg_http_match_uri(hm, "/api/video1")) { */
+    struct mg_http_message *hm = (struct mg_http_message *) ev_data; //(struct mg_http_message *) ev_data;
+    if (mg_http_match_uri(hm, "/video")) { 
       c->label[0] = 'S';  // Mark that connection as live streamer
       mg_printf(
           c, "%s",
@@ -122,10 +128,10 @@ static void cb(struct mg_connection *c, int ev, void *ev_data, void *fn_data)
           "Cache-Control: no-cache\r\n"
           "Pragma: no-cache\r\nExpires: Thu, 01 Dec 1994 16:00:00 GMT\r\n"
           "Content-Type: multipart/x-mixed-replace; boundary=--foo\r\n\r\n");
-    /*} else {
+      }  else { 
       struct mg_http_serve_opts opts = {.root_dir = "web_root"};
       mg_http_serve_dir(c, hm, &opts);
-    } */
+    } 
   } 
 }
 
@@ -135,22 +141,21 @@ static void broadcast_mjpeg_frame(struct mg_mgr *mgr)
             (outbuf[0]!=0xff && outbuf[0]!=0xd8) ||
             (outbuf[outbuf.size()-2]!=0xff && outbuf[outbuf.size()-1]!=0xd9))
         {
-            usleep(5000);
+            usleep(10000);
         }
   uchar *data = outbuf.data();
   size_t size = outbuf.size();
   struct mg_connection *c;
   for (c = mgr->conns; c != NULL; c = c->next) {
     if (c->label[0] != 'S') continue;         // Skip non-stream connections
-    if (outbuf.data() == NULL || size == 0) continue;  // Skip on file read error f (outbuf.data() == NULL || size == 0) continue;
+    if (outbuf.data() == NULL || size == 0) continue;  // Skip on buffer read error f (outbuf.data() == NULL || size == 0) continue;
     mg_printf(c,
               "--foo\r\nContent-Type: image/jpeg\r\n"
               "Content-Length: %lu\r\n\r\n",
               (unsigned long) size);
     mg_send(c, data, size); // mg_send(c, &outbuf[0], size) mg_send(c, outbuf.data(), size);
-    //mg_send(c, "\r\n", 2);
+    mg_send(c, "\r\n", 2);
   }
-  //free(data);
 }
 
 static void timer_callback(void *arg) 
@@ -572,7 +577,7 @@ void *Camera(void *arg)
     vector<Point> approx;
     bool ok = false;
     int detection = 1;
-    int tracking = 1;
+    int tracking = 0;
     Rect2d mr; 
     Point centre;
     /* Parameters to the encoder for jpeg stream */
@@ -612,7 +617,7 @@ void *Camera(void *arg)
     params.histogram_bins = 16;
     params.background_ratio = 2; /* Default value =2 */
     params.histogram_lr = 0.04f;
-    params.psr_threshold = 0.07f; /* Default value= 0.035 CSRT Tracker parameter to make it more sensible to false positives */
+    params.psr_threshold = 0.06f; /* Default value= 0.035 CSRT Tracker parameter to make it more sensible to false positives */
     
     Ptr<Tracker> tracker; /* Create Pointer to tracker object */
     tracker = TrackerCSRT::create(params); /* Create the tracker object */
@@ -693,7 +698,7 @@ void *Camera(void *arg)
 	    }
 	  after = clock();
 	 
-	  if ((contourArea(contours[contours_chosen]))>500 && ((double)(after-before)/(double)CLOCKS_PER_SEC)>10)
+	  if ((contourArea(contours[contours_chosen]))>800 && ((double)(after-before)/(double)CLOCKS_PER_SEC)>10)
 	    {
 	      approxPolyDP(contours[contours_chosen], approx, arcLength(contours[contours_chosen], true)*0.02, true);
 	     
@@ -712,8 +717,8 @@ void *Camera(void *arg)
 		printf("mr.height= %f \n",mr.height);*/
 		detection = 0;
 		tracking = 1;
-		mr.width = mr.width*1.5;
-		mr.height = mr.height*1.5;
+		mr.width = mr.width;
+		mr.height = mr.height;
 		tracker->init(frame, mr); 
 		parameters_servo.PID_start = 1;
 		parameters.seek = 1;
@@ -774,10 +779,14 @@ void *Camera(void *arg)
 	//destroyWindow("Normal");
 	tracker.release();
 	tracker = TrackerCSRT::create(params);
-	before = clock();      
+	before = clock();   
     }
   //destroyAllWindows();
+  pMOG2.release();
+  tracker.release();
+  printf("Tracker has been released\n");
   cap.release();
+  printf("Camera has been released\n");
   pthread_exit(NULL);
 }
 
@@ -2009,7 +2018,7 @@ void *Walking(void *arg)
   {
     Centre(servo_handler);
     
-      while(!parameters.ultrimpct && parameters.seek)
+     /* while(!parameters.ultrimpct && parameters.seek)
       {
 	Forward(servo_handler);
       }
@@ -2017,7 +2026,7 @@ void *Walking(void *arg)
       while(parameters.ultrimpct)
       {
 	Backward((int)arg);
-      } 
+      } */
   }
   
   pthread_exit(NULL);
@@ -2037,10 +2046,11 @@ Init_Pigpio();
 
 /* control signal() here IMPORTANT, if this is called before initializing the pigpio it will NOT work, pigpio initializes all flags */
 signal(SIGINT, inthandler);
-signal(SIGABRT, inthandler);
-signal(SIGILL, inthandler);
-signal(SIGSEGV, inthandler);
-signal(SIGTERM, inthandler);
+signal(SIGHUP, inthandler1);
+signal(SIGABRT, inthandler1);
+signal(SIGILL, inthandler1);
+signal(SIGSEGV, inthandler1);
+signal(SIGTERM, inthandler1);
 
 /* Restart the PCA9685 here */
 parameters_servo.servos = Restart_PCA9685();
@@ -2104,29 +2114,28 @@ struct mg_mgr mgr;
 struct mg_timer t1;
 
 mg_mgr_init(&mgr);
-mg_http_listen(&mgr, "http://0.0.0.0:5000", cb, NULL); /* Accepting connections from any IP (0.0.0.0), 
-							full conn string: http://192.168.8.132:5000/api/video1 */ 
+mg_http_listen(&mgr, "http://0.0.0.0:5000", cb, NULL); /* Accepting connections from any IP (0.0.0.0), TCP port 8888 cant be used as it is in use 
+							by pigpio WTF, full conn string: http://192.168.8.132:5000 */ 
 mg_timer_init(&t1, 500, MG_TIMER_REPEAT, timer_callback, &mgr);
 
 while(interrupt)
 {
   mg_mgr_poll(&mgr, 50);
 }
-
-for(i=0;i<6;i++) 
-    {
-      pthread_join(callThd[i], &status);
-    }
 /* Releasing web server */ 
 mg_timer_free(&t1);
 mg_mgr_free(&mgr);
-    
-  /*i2cWriteByteData(parameters_servo.servos, 0xFD, 0x10); 
-  i2cWriteByteData(parameters_servo.servos, 0x00, 0x00); 
-  i2cClose(parameters_servo.servos);
-  i2cClose(parameters.MPU6050);
-  fclose(parameters.f);
-  gpioTerminate();*/
-    
-  exit(0);
+sleep(3);
+
+for(i=0;i<3;i++) 
+    {
+      pthread_join(callThd[i], &status);
+    }
+for(i=4;i<6;i++) 
+    {
+      pthread_join(callThd[i], &status);
+    }
+pthread_cancel(callThd[3]);
+
+exit(0);
 }
