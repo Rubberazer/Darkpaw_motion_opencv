@@ -49,6 +49,7 @@ typedef struct
   float gyro_z; /* Gyroscope z axis */ 
   float camera_x; /* This is the x axis of the target coming from the camera */
   int seek; /* This is the flag to start seeking */
+  int enable_walking; /* This just enables the robot capacity to move */
   FILE *f;
   
 } PARAM;
@@ -114,12 +115,17 @@ void inthandler1(int signum)
 /* Web server functions below */
 
 // HTTP request handler function. It implements the following endpoints:
-//   /api/video1 - hangs forever, returns MJPEG video stream
+//   /video - hangs forever, returns MJPEG video stream
 //   all other URI - serves web_root/ directory
 static void cb(struct mg_connection *c, int ev, void *ev_data, void *fn_data) 
 {
+  /*char result[5];
+  if (mg_http_get_var(&hm->query, "stop", result, sizeof(result))>0)
+  {printf("%s\n",result);} */
+  
   if (ev == MG_EV_HTTP_MSG) {
     struct mg_http_message *hm = (struct mg_http_message *) ev_data; //(struct mg_http_message *) ev_data;
+    
     if (mg_http_match_uri(hm, "/video")) { 
       c->label[0] = 'S';  // Mark that connection as live streamer
       mg_printf(
@@ -128,10 +134,30 @@ static void cb(struct mg_connection *c, int ev, void *ev_data, void *fn_data)
           "Cache-Control: no-cache\r\n"
           "Pragma: no-cache\r\nExpires: Thu, 01 Dec 1994 16:00:00 GMT\r\n"
           "Content-Type: multipart/x-mixed-replace; boundary=--foo\r\n\r\n");
-      }  else { 
+      }  
+      
+      else if (mg_http_match_uri(hm, "/start")) {
+	parameters.enable_walking = 1; 
+	hm->uri = mg_str("/");
+	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
+	mg_http_serve_dir(c, hm, &opts);
+      }
+      else if (mg_http_match_uri(hm, "/stop")) {
+	parameters.enable_walking = 0;
+	hm->uri = mg_str("/");
+	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
+	mg_http_serve_dir(c, hm, &opts);
+      }
+       else if (mg_http_match_uri(hm, "/reset")) {
+	parameters.seek = 0;
+	hm->uri = mg_str("/");
+	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
+	mg_http_serve_dir(c, hm, &opts);
+      }
+      else { 
       struct mg_http_serve_opts opts = {.root_dir = "web_root"};
       mg_http_serve_dir(c, hm, &opts);
-    } 
+    }
   } 
 }
 
@@ -577,7 +603,6 @@ void *Camera(void *arg)
     vector<Point> approx;
     bool ok = false;
     int detection = 1;
-    int tracking = 0;
     Rect2d mr; 
     Point centre;
     /* Parameters to the encoder for jpeg stream */
@@ -587,7 +612,7 @@ void *Camera(void *arg)
     params_stream[1] = 80; /* JPEG quality (1...100) */
     
     Ptr<BackgroundSubtractor> pMOG2; /* MOG2 Background subtractor */
-    pMOG2 = createBackgroundSubtractorMOG2(100,10,false); /* Create MOG2 Background Subtractor object */
+    pMOG2 = createBackgroundSubtractorMOG2(100,10,true); /* Create MOG2 Background Subtractor object */
     
     TrackerCSRT::Params params = TrackerCSRT::Params(); /* Creating parameters for the tracker so we are able to change threshold */
     /* Full list of parameters */
@@ -597,7 +622,7 @@ void *Camera(void *arg)
     params.use_color_names = true;
     params.use_gray = false; /* orginally true */
     params.use_rgb = true; /* originally false */
-    params.window_function = "cheb"; /* originally= hann, but others are possible: Window function: "hann", "cheb", "kaiser"*/
+    params.window_function = "hann"; /* originally= hann, but others are possible: Window function: "hann", "cheb", "kaiser"*/
     params.kaiser_alpha = 3.75f;
     params.cheb_attenuation = 45;
     params.padding = 3.0f;
@@ -617,10 +642,10 @@ void *Camera(void *arg)
     params.histogram_bins = 16;
     params.background_ratio = 2; /* Default value =2 */
     params.histogram_lr = 0.04f;
-    params.psr_threshold = 0.06f; /* Default value= 0.035 CSRT Tracker parameter to make it more sensible to false positives */
+    params.psr_threshold = 0.07f; /* Default value= 0.035 CSRT Tracker parameter to make it more sensible to false positives */
     
     Ptr<Tracker> tracker; /* Create Pointer to tracker object */
-    tracker = TrackerCSRT::create(params); /* Create the tracker object */
+    //tracker = TrackerCSRT::create(params); /* Create the tracker object */
     
     int contours_chosen = 0;
 
@@ -639,13 +664,14 @@ void *Camera(void *arg)
 	cerr << "ERROR! Unable to open camera, exiting thread\n";
 	pthread_exit(NULL);
       }
-
-    before = clock(); /* allow time to settle the movement detector when start frame capture camera*/
     
     while(interrupt)
     {
+      try
+      {
 	detection = 1;
-	tracking = 0;
+	parameters.seek = 0;
+	before = clock(); /* allow time to settle the movement detector when start frame capture camera*/
 	
 	while (detection)
 	{
@@ -665,22 +691,25 @@ void *Camera(void *arg)
 	  
 	  /* colour to gray conversion */
 	  cvtColor(frame, framegray, COLOR_RGB2GRAY); 
-	  GaussianBlur(framegray, framegray, Size(7, 7), 1.5, 1.5);
-	  medianBlur(framegray, framegray, 5);
-	  /* Adaptive Guassian Threshold is to detect sharp edges in the Image. For more information */
-	  //adaptiveThreshold(framegray, framegray, 255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY, 7, 4);
-	
-	  /* Eroding image*/
-	  //erode(framegray, framegray, getStructuringElement(MORPH_RECT, Size(5, 5)));
-	  erode(framegray, framegray, getStructuringElement(MORPH_RECT, Size(10, 10)), Point(-1, -1),2,BORDER_DEFAULT);
-	  
-	  /* Dilate image*/
-	  //dilate(framegray, framegray, getStructuringElement(MORPH_RECT, Size(5, 5));
-	  dilate(framegray, framegray, getStructuringElement(MORPH_RECT, Size(12, 12)), Point(-1, -1),2,BORDER_DEFAULT);
+	  GaussianBlur(framegray, framegray, Size(21, 21), 0, 0);
+	  //GaussianBlur(framegray, framegray, Size(7, 7), 1.5, 1.5);
+	  //medianBlur(framegray, framegray, 5);
 	  
 	  pMOG2->apply(framegray, fgMaskMOG2, 0.1); /* Update the MOG2 background model based 
 	  on the current frame, 0=background model not updated, 1=background model is completely reinitialized from the 
 	  last frame, negative=automatic, used=0.0035  */
+	  
+	  /* Adaptive Guassian Threshold is to detect sharp edges in the Image. For more information */
+	  //adaptiveThreshold(framegray, framegray, 255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY, 7, 4);
+	  
+	  /* Eroding image*/
+	  //erode(framegray, framegray, getStructuringElement(MORPH_RECT, Size(7, 7)));
+	  //erode(fgMaskMOG2, fgMaskMOG2, getStructuringElement(MORPH_RECT, Size(5, 5)), Point(-1, -1),2,BORDER_DEFAULT);
+	  
+	  /* Dilate image*/
+	  //dilate(framegray, framegray, getStructuringElement(MORPH_RECT, Size(5, 5)));
+	  dilate(fgMaskMOG2, fgMaskMOG2, getStructuringElement(MORPH_RECT, Size(7, 7)), Point(-1, -1),2,BORDER_DEFAULT);
+	  
 	  
 	  findContours(fgMaskMOG2, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE); 
 	  
@@ -698,12 +727,12 @@ void *Camera(void *arg)
 	    }
 	  after = clock();
 	 
-	  if ((contourArea(contours[contours_chosen]))>800 && ((double)(after-before)/(double)CLOCKS_PER_SEC)>10)
+	  if ((contourArea(contours[contours_chosen]))>3000 && ((double)(after-before)/(double)CLOCKS_PER_SEC)>10)
 	    {
-	      approxPolyDP(contours[contours_chosen], approx, arcLength(contours[contours_chosen], true)*0.02, true);
+	      //approxPolyDP(contours[contours_chosen], approx, arcLength(contours[contours_chosen], true)*0.02, true);
 	     
-	      mr = boundingRect(approx); //mr= boundingRect(approx);
-	      if (mr.x>0 && mr.y>0) /* To check if the rectangle is out of screen (long negative),if not it will THROW EXCEPTION: 
+	      mr = boundingRect(contours[contours_chosen]); //mr= boundingRect(approx);
+	      if (mr.x>=0 && mr.y>=0 && mr.width>=0 && mr.height>=0) /* To check if the rectangle is out of screen (long negative),if not it will THROW EXCEPTION: 
 	      error(-211) see: https://github.com/opencv/opencv/issues/7573 */
 		{
 		/* mr.width = mr.width;
@@ -716,9 +745,7 @@ void *Camera(void *arg)
 		printf("mr.width= %f \n",mr.width);
 		printf("mr.height= %f \n",mr.height);*/
 		detection = 0;
-		tracking = 1;
-		mr.width = mr.width;
-		mr.height = mr.height;
+		tracker = TrackerCSRT::create(params);
 		tracker->init(frame, mr); 
 		parameters_servo.PID_start = 1;
 		parameters.seek = 1;
@@ -732,7 +759,7 @@ void *Camera(void *arg)
 	}
 	
 	//destroyWindow("FG Mask MOG 2");
-	while (tracking)
+	while (parameters.seek)
 	{
 	  /* wait for a new frame from camera and store it into 'frame' */
 	  cap.read(frame);
@@ -749,6 +776,7 @@ void *Camera(void *arg)
 	  if (ok)
 	    {
 	      rectangle(frame, mr, Scalar( 255, 0, 0 ), 2, 1 );
+	      putText(frame, "TRACKING", Point(20, 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0)); /* this one is the top-left corner */
 	      float scale = 1.0;
 	      centre.x = cvRound((mr.x + mr.width*0.5)*scale);
 	      centre.y = cvRound((mr.y + mr.height*0.5)*scale);
@@ -758,7 +786,6 @@ void *Camera(void *arg)
 	    {
 	    //putText(frame, "Tracking failure detected", Point(100,80), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(0,0,255),2);
 	    detection = 1;
-	    tracking = 0;
 	    parameters.seek = 0;
 	    parameters_servo.PID_start = 0;
 	    }
@@ -777,9 +804,12 @@ void *Camera(void *arg)
 	}
 	  
 	//destroyWindow("Normal");
-	tracker.release();
-	tracker = TrackerCSRT::create(params);
-	before = clock();   
+      }
+      catch( cv::Exception& e )
+      {
+	const char* err_msg = e.what();
+	cout << "exception caught: " << err_msg << endl;
+      }
     }
   //destroyAllWindows();
   pMOG2.release();
@@ -2013,20 +2043,33 @@ void *Walking(void *arg)
 {
   int servo_handler;
   servo_handler = (int)arg;
+  const int FRONTLIGHT0 = 5; /*BCM pin 5, front LED*/
+  const int FRONTLIGHT1 = 13; /*BCM pin 13, front LED*/
+  gpioSetMode(FRONTLIGHT0, PI_OUTPUT); 
+  gpioSetMode(FRONTLIGHT1, PI_OUTPUT); 
   
   while(interrupt)
-  {
-    Centre(servo_handler);
-    
-     while(!parameters.ultrimpct && parameters.seek)
-      {
-	Forward(servo_handler);
-      }
+  { 
+    while(parameters.enable_walking)
+    {
+      Centre(servo_handler);
+      gpioWrite(FRONTLIGHT0, 0);
+      gpioWrite(FRONTLIGHT1, 0);
       
-      while(parameters.ultrimpct)
-      {
-	Backward((int)arg);
-      } 
+	while(!parameters.ultrimpct && parameters.seek && parameters.enable_walking)
+	{
+	  
+	  Forward(servo_handler);
+	}
+	
+	while(parameters.ultrimpct)
+	{
+	  gpioWrite(FRONTLIGHT0, 1);
+	  gpioWrite(FRONTLIGHT1, 1);
+	  Backward((int)arg);
+	} 
+    }
+    sleep(1);
   }
   
   pthread_exit(NULL);
@@ -2062,6 +2105,7 @@ Init_PCA9685(parameters_servo.servos);
 parameters.global_position =1;
 parameters.seek = 0;
 parameters_servo.PID_start = 0;
+parameters.enable_walking = 0;
 	
 /* Create threads to start seeing, will not use attributes on this occasion*/  
 pthread_attr_init(&attr);
@@ -2112,11 +2156,10 @@ if (pth_err !=0)
 /* Starting web server here */
 struct mg_mgr mgr;
 struct mg_timer t1;
-
 mg_mgr_init(&mgr);
 mg_http_listen(&mgr, "http://0.0.0.0:5000", cb, NULL); /* Accepting connections from any IP (0.0.0.0), TCP port 8888 cant be used as it is in use 
 							by pigpio WTF */ 
-mg_timer_init(&t1, 500, MG_TIMER_REPEAT, timer_callback, &mgr);
+mg_timer_init(&t1, 100, MG_TIMER_REPEAT, timer_callback, &mgr);
 
 while(interrupt)
 {
@@ -2135,7 +2178,6 @@ for(i=4;i<6;i++)
     {
       pthread_join(callThd[i], &status);
     }
-pthread_cancel(callThd[3]);
-
-exit(0);
+//pthread_cancel(callThd[3]);
+exit(1);
 }
