@@ -9,18 +9,25 @@
       #container { margin-right: auto; margin-left: auto; max-width: 1024px; }
       #info { background: #e0f0f0; border-radius: .5em; padding: 2em;  }
       img { width: 100%; margin-top: 1em; border: 1px solid #ccc; }
-
     </style>
   </head>
   <body>
     <div id="container">
       <div id="info">
-        A div below shows live MJPEG video stream from the robot.
-        <br/><br/>
-        You can also use <code>curl</code> command-line utility:
-        <br/><code>curl localhost:5000/video</code>
+        <p style="font-size:30px">DARKPAW CONTROL UTILITY</p>
       </div>
       <img src="/video" />
+      <div id="wrapper">
+        <form action="/start" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
+          <button name="START" type="submit" value="START">START SEEKING</button>
+          </form>
+        <form action="/stop" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
+          <button name="STOP" type="submit" value="STOP">STOP SEEKING</button>
+        </form>
+        <form action="/reset" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
+          <button name="RESET" type="submit" value="RESET">RESET TRACKER</button>
+        </form>
+      </div>
     </div>
   </body>
 </html>
