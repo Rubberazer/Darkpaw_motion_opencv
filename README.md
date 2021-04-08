@@ -28,7 +28,7 @@ Version 2: Detects moving objects and once detected it tracks (and follows) them
 
 Version 3: Detects moving objects and once detected it tracks (and follows) them, this version also incorporates a web server for video streaming.
   
-  Files: 3_darkpaw.cpp, makefile3
+  Files: 3_darkpaw.cpp, makefile3, web_root folder
   
   Compile: rename 'makefile3' to 'makefile' and type 'make', pigpio and opencv libraries should be installed previously, also mongoose.c and mongoose.h are     required 
   
