@@ -79,9 +79,9 @@ typedef struct
 } SERVOS_PARAMETERS;
 
 /* Define globally accessible variables no mutex */
-PARAM parameters;
+volatile PARAM parameters;
 /* Define globally accessible variables no mutex for exclusive use of the servos*/
-SERVOS_PARAMETERS parameters_servo;
+volatile SERVOS_PARAMETERS parameters_servo;
 
 /* Buffer for jpeg streaming*/
 static std::vector<uchar> outbuf;
@@ -597,7 +597,7 @@ void *Camera(void *arg)
 {
     clock_t before = 0;
     clock_t after = 0;
-    Mat frame, framegray, output;
+    Mat frame, framegray;
     Mat fgMaskMOG2; /* Foreground mask used by MOG2 method */ 
     vector<vector<Point> > contours; 
     vector<Point> approx;
@@ -612,7 +612,7 @@ void *Camera(void *arg)
     params_stream[1] = 80; /* JPEG quality (1...100) */
     
     Ptr<BackgroundSubtractor> pMOG2; /* MOG2 Background subtractor */
-    pMOG2 = createBackgroundSubtractorMOG2(100,10,true); /* Create MOG2 Background Subtractor object */
+    pMOG2 = createBackgroundSubtractorMOG2(100,15,true); /* Create MOG2 Background Subtractor object */
     
     TrackerCSRT::Params params = TrackerCSRT::Params(); /* Creating parameters for the tracker so we are able to change threshold */
     /* Full list of parameters */
@@ -667,8 +667,6 @@ void *Camera(void *arg)
     
     while(interrupt)
     {
-      try
-      {
 	detection = 1;
 	parameters.seek = 0;
 	before = clock(); /* allow time to settle the movement detector when start frame capture camera*/
@@ -695,7 +693,7 @@ void *Camera(void *arg)
 	  //GaussianBlur(framegray, framegray, Size(7, 7), 1.5, 1.5);
 	  //medianBlur(framegray, framegray, 5);
 	  
-	  pMOG2->apply(framegray, fgMaskMOG2, 0.1); /* Update the MOG2 background model based 
+	  pMOG2->apply(framegray, fgMaskMOG2, 0.2); /* Update the MOG2 background model based 
 	  on the current frame, 0=background model not updated, 1=background model is completely reinitialized from the 
 	  last frame, negative=automatic, used=0.0035  */
 	  
@@ -726,8 +724,8 @@ void *Camera(void *arg)
 	      }
 	    }
 	  after = clock();
-	 
-	  if ((contourArea(contours[contours_chosen]))>3000 && ((double)(after-before)/(double)CLOCKS_PER_SEC)>10)
+
+	  if ((contourArea(contours[contours_chosen]))>2000 && ((double)(after-before)/(double)CLOCKS_PER_SEC)>10)
 	    {
 	      //approxPolyDP(contours[contours_chosen], approx, arcLength(contours[contours_chosen], true)*0.02, true);
 	     
@@ -746,13 +744,14 @@ void *Camera(void *arg)
 		printf("mr.height= %f \n",mr.height);*/
 		detection = 0;
 		tracker = TrackerCSRT::create(params);
+		mr = mr & Rect2d(0, 0, 640, 480); /* To avoid exception  error: (-215:Assertion failed) */ 
 		tracker->init(frame, mr); 
 		parameters_servo.PID_start = 1;
 		parameters.seek = 1;
 		}
 	  
 	    }
-	  
+
 	    //imshow("FG Mask MOG 2", fgMaskMOG2); /*Show the MOG2 foreground mask */
 	    /* show live and wait */
 	    //waitKey(1);
@@ -804,12 +803,6 @@ void *Camera(void *arg)
 	}
 	  
 	//destroyWindow("Normal");
-      }
-      catch( cv::Exception& e )
-      {
-	const char* err_msg = e.what();
-	cout << "exception caught: " << err_msg << endl;
-      }
     }
   //destroyAllWindows();
   pMOG2.release();
@@ -2178,6 +2171,6 @@ for(i=4;i<6;i++)
     {
       pthread_join(callThd[i], &status);
     }
-//pthread_cancel(callThd[3]);
+
 exit(1);
 }
