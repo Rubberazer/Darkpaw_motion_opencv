@@ -11,6 +11,8 @@ Basically replaced the original maker's python code by my own C code -with a pin
 
 28/03/2021: Added an embedded web server based on Mongoose, now the robot streams video straight from its camera marking (blue rectangle) the tracked object. Unfortunately the workload finally broke the camels back and it starts to show that the Rasperry 4 is just too short, future potential optimization is required, probably switch from a CSRT to a MOOSE tracker.
 
+10/04/2021: Probaly last version, tidy up in general, closing threads properly and cleaning up comments. kept the CSRT tracker and solved some recurrent exceptions thrown by OpenCV, mostly to do with capturing out of frame.
+
 The robot itself can be found here: https://www.adeept.com/adeept-darkpaw-bionic-quadruped-spider-robot-kit-for-raspberry-pi-4-3-model-b-b-2b-stem-crawling-robot-opencv-tracking-self-stabilizing_p0125_s0035.html
 
 It is a cool toy and the provided HAT supports connecting some additional stuff if you wanted too, I equipped it with a Raspberry Pi 4 with 8 Gigas so it is (almost) enough for the OpenCV stuff, as a basis to control the GPIO I am using the famous PIGPIO library wich always works first time, really good stuff that can be found here: http://abyz.me.uk/rpi/pigpio/
