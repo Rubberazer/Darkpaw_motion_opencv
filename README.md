@@ -28,7 +28,7 @@ OpenCV 4.5.0 (or any other version) can be obtained here: https://github.com/ope
   Compile: type 'make', pigpio and opencv libraries should be installed previously
   Execute: sudo ./darkpaw
 
-<h2 align="left">Second Version</h2>
+[<h2 align="left">Second Version</h2>](https://github.com/Rubberazer/Darkpaw_motion_opencv/tree/main/Second_version)
   
   Detects moving objects and once detected it tracks (and follows) them, this version also incorporates a web server for video streaming.
   
@@ -38,7 +38,7 @@ OpenCV 4.5.0 (or any other version) can be obtained here: https://github.com/ope
   
   Execute: sudo ./darkpaw
  
- <h2 align="left">Latest @ main</h2>  
+ [<h2 align="left">Latest @ main</h2>](https://github.com/Rubberazer/Darkpaw_motion_opencv)
   
   Same functionality as 2 but terminating threads properly, cleaning up comments and tidying up a bit, all files hanging from 'main' in the repository
   
