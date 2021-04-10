@@ -23,7 +23,7 @@ OpenCV 4.5.0 (or any other version) can be obtained here: https://github.com/ope
 
   Detects moving objects and once detected it tracks (and follows) them
   
-  Files: 2_darkpaw.cpp, makefile2
+  Files: 2_darkpaw.cpp, makefile
   
   Compile: type 'make', pigpio and opencv libraries should be installed previously
   Execute: sudo ./darkpaw
@@ -32,7 +32,7 @@ OpenCV 4.5.0 (or any other version) can be obtained here: https://github.com/ope
   
   Detects moving objects and once detected it tracks (and follows) them, this version also incorporates a web server for video streaming.
   
-  Files: 3_darkpaw.cpp, makefile3, web_root folder
+  Files: 3_darkpaw.cpp, makefile, web_root folder
   
   Compile: type 'make', pigpio and opencv libraries should be installed previously, also mongoose.c and mongoose.h are required 
   
