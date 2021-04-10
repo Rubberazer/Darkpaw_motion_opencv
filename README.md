@@ -19,26 +19,29 @@ Embedded web server used is the famous Mongoose, version 7.2 that can be obtaine
 
 OpenCV 4.5.0 (or any other version) can be obtained here: https://github.com/opencv/opencv
 
-<h1 align="left">First Version</h1> 
+<h2 align="left">First Version</h2> 
 
   Detects moving objects and once detected it tracks (and follows) them
   
   Files: 2_darkpaw.cpp, makefile2
   
-  Compile: rename 'makefile2' to 'makefile' and type 'make', pigpio and opencv libraries should be installed previously
-  Execute: sudo ./2_darkpaw
+  Compile: type 'make', pigpio and opencv libraries should be installed previously
+  Execute: sudo ./darkpaw
 
-<h1 align="left">Second Version</h1> 
+<h2 align="left">Second Version</h2> 
   
   Detects moving objects and once detected it tracks (and follows) them, this version also incorporates a web server for video streaming.
   
   Files: 3_darkpaw.cpp, makefile3, web_root folder
   
-  Compile: rename 'makefile3' to 'makefile' and type 'make', pigpio and opencv libraries should be installed previously, also mongoose.c and mongoose.h are     required 
+  Compile: type 'make', pigpio and opencv libraries should be installed previously, also mongoose.c and mongoose.h are required 
   
-  Execute: sudo ./3_darkpaw
+  Execute: sudo ./darkpaw
  
- <h1 align="left">Latest</h1>  
+ <h2 align="left">Latest @ main</h2>  
   
-  Same functionality as 3 but terminating threads properly, cleaning up comments and tidying up a bit, all files hanging from 'main' in the repository
-
+  Same functionality as 2 but terminating threads properly, cleaning up comments and tidying up a bit, all files hanging from 'main' in the repository
+  
+  Compile: type 'make', pigpio and opencv libraries should be installed previously, also mongoose.c and mongoose.h are required 
+  
+  Execute: sudo ./darkpaw
