@@ -4,7 +4,7 @@ IDIR3 =/usr/local/include/opencv4/
 
 CC=g++
 CFILES =2_darkpaw.cpp
-TARGET =2_darkpaw
+TARGET =darkpaw
 LDIR =//usr/local/lib/
 
 LIBS=-lpigpio -lpthread -lrt -lopencv_videoio -lopencv_core -lopencv_imgproc -lopencv_ml -lopencv_video -lopencv_features2d -lopencv_stitching -lopencv_aruco -lopencv_bgsegm -lopencv_bioinspired -lopencv_calib3d -lopencv_ccalib -lopencv_datasets -lopencv_dnn -lopencv_dpm -lopencv_face -lopencv_flann -lopencv_freetype -lopencv_fuzzy -lopencv_gapi -lopencv_hfs -lopencv_highgui -lopencv_imgcodecs -lopencv_img_hash -lopencv_imgproc -lopencv_line_descriptor -lopencv_ml -lopencv_objdetect -lopencv_tracking
