@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Darkpaw</title>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      @font-face { 
+      font-family: 'Atari';
+      src: url('~/.fonts/AtariSmall.ttf ') format('ttf');
+        }
+      #container { margin-right: auto; margin-left: auto; max-width: 1024px; }
+      #info { background: yellow; border-radius: .5em; padding: 2em;  }
+      img { width: 100%; margin-top: 1em; border: 1px solid #ccc; }
+
+body{
+	font-family: Atari;
+  text-align: center;
+}
+
+span{
+  position: relative;
+  transform: translate(-50%, -50%);
+  font-size:50px;
+  
+  animation: animate 
+                1.5s linear infinite;
+}
+@keyframes animate {
+            0% {
+                opacity: 0;
+            }
+  
+            50% {
+                opacity: 0.7;
+            }
+  
+            100% {
+                opacity: 0;
+            }
+
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <div id="info">
+        <span>WATCHING</span>
+      </div>
+      <img src="/video" />
+      <div id="wrapper">
+        <form action="/start" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
+          <button name="START" type="submit" value="START">START SEEKING</button>
+          </form>
+        <form action="/stop" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
+          <button name="STOP" type="submit" value="STOP">STOP SEEKING</button>
+        </form>
+        <form action="/reset" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
+          <button name="RESET" type="submit" value="RESET">RESET TRACKER</button>
+        </form>
+      </div>
+    </div>
+  </body>
+</html>
