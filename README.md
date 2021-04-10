@@ -33,4 +33,5 @@ Version 3: Detects moving objects and once detected it tracks (and follows) them
   Compile: rename 'makefile3' to 'makefile' and type 'make', pigpio and opencv libraries should be installed previously, also mongoose.c and mongoose.h are     required 
   
   Execute: sudo ./3_darkpaw
+ Version 4: Same functionality as 3 but terminating threads properly, cleaning up comments and tidying up a bit, all files hanging from 'main' in the repository
 
