@@ -19,7 +19,7 @@ Embedded web server used is the famous Mongoose, version 7.2 that can be obtaine
 
 OpenCV 4.5.0 (or any other version) can be obtained here: https://github.com/opencv/opencv
 
-<h2 align="left">First Version</h2> 
+[<h2 align="left">First Version</h2>](https://github.com/Rubberazer/Darkpaw_motion_opencv/tree/main/First_version)
 
   Detects moving objects and once detected it tracks (and follows) them
   
@@ -28,7 +28,7 @@ OpenCV 4.5.0 (or any other version) can be obtained here: https://github.com/ope
   Compile: type 'make', pigpio and opencv libraries should be installed previously
   Execute: sudo ./darkpaw
 
-<h2 align="left">Second Version</h2> 
+<h2 align="left">Second Version</h2>
   
   Detects moving objects and once detected it tracks (and follows) them, this version also incorporates a web server for video streaming.
   
