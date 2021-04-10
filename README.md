@@ -42,6 +42,8 @@ OpenCV 4.5.0 (or any other version) can be obtained here: https://github.com/ope
   
   Same functionality as 2 but terminating threads properly, cleaning up comments and tidying up a bit, all files hanging from 'main' in the repository
   
+  Files: 4_darkpaw.cpp, makefile, web_root folder
+  
   Compile: type 'make', pigpio and opencv libraries should be installed previously, also mongoose.c and mongoose.h are required 
   
   Execute: sudo ./darkpaw
