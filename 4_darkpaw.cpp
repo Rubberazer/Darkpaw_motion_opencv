@@ -48,8 +48,12 @@ typedef struct
   float gyro_y; /* Gyroscope y axis */ 
   float gyro_z; /* Gyroscope z axis */ 
   float camera_x; /* This is the x axis of the target coming from the camera */
-  int seek; /* This is the flag to start seeking */
+  int seek; /* This is the flag to start tracking */
+  int detect; /* This is the flag to start detecting */
   int enable_walking; /* This just enables the robot capacity to move */
+  int left; /* Tell the robot to turn left */
+  int right; /* Tell the robot to turn right */
+  int backwards; /* Tell the robot to go backwards */
   FILE *f;
   
 } PARAM;
@@ -103,9 +107,9 @@ void inthandler(int signum)
 void inthandler1(int signum) 
 {
   interrupt = 0;
-  printf("Caught signal %d, coming out ...\n", signum);
-  usleep(1000000);
+  usleep(1500000);
   gpioTerminate();
+  printf("Caught signal %d, coming out ...\n", signum);
   exit(EXIT_FAILURE);
 }
 /* Web server functions below */
@@ -145,6 +149,33 @@ static void cb(struct mg_connection *c, int ev, void *ev_data, void *fn_data)
 	mg_http_serve_dir(c, hm, &opts);
       }
        else if (mg_http_match_uri(hm, "/reset")) {
+	parameters.seek = 0;
+	hm->uri = mg_str("/");
+	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
+	mg_http_serve_dir(c, hm, &opts);
+      }
+      else if (mg_http_match_uri(hm, "/left")) {
+	parameters.left = 1;
+	parameters.enable_walking = 1; 
+	parameters.detect = 0;
+	parameters.seek = 0;
+	hm->uri = mg_str("/");
+	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
+	mg_http_serve_dir(c, hm, &opts);
+      }
+      else if (mg_http_match_uri(hm, "/backwards")) {
+	parameters.backwards = 1;
+	parameters.enable_walking = 1; 
+	parameters.detect = 0;
+	parameters.seek = 0;
+	hm->uri = mg_str("/");
+	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
+	mg_http_serve_dir(c, hm, &opts);
+      }
+      else if (mg_http_match_uri(hm, "/right")) {
+	parameters.right = 1;
+	parameters.enable_walking = 1; 
+	parameters.detect = 0;
 	parameters.seek = 0;
 	hm->uri = mg_str("/");
 	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
@@ -658,7 +689,7 @@ void *Camera(void *arg)
 	  outbuf.swap(buffer);
 	  
 	  /* colour to gray conversion */
-	  cvtColor(frame, framegray, COLOR_BGR2GRAY); //COLOR_RGB2GRAY
+	  cvtColor(frame, framegray, COLOR_RGB2GRAY); //COLOR_BGR2GRAY
 	  GaussianBlur(framegray, framegray, Size(21, 21), 0, 0);
 	  
 	  pMOG2->apply(framegray, fgMaskMOG2, 0.2); /* Update the MOG2 background model based 
@@ -683,22 +714,20 @@ void *Camera(void *arg)
 	    }
 	  after = clock();
 
-	  if ((contourArea(contours[contours_chosen]))>2000 && ((double)(after-before)/(double)CLOCKS_PER_SEC)>10)
+	  if ((contourArea(contours[contours_chosen]))>2000 && ((double)(after-before)/(double)CLOCKS_PER_SEC)>10 && parameters.detect)
 	    {
-	      //approxPolyDP(contours[contours_chosen], approx, arcLength(contours[contours_chosen], true)*0.02, true);
-	     
 	      mr = boundingRect(contours[contours_chosen]); //mr= boundingRect(approx);
-	      if (mr.x>=0 && mr.y>=0 && mr.width>=0 && mr.height>=0) /* To check if the rectangle is out of screen (long negative),if not it will THROW EXCEPTION: 
+	      if (mr.x>=0 && mr.y>=0 && mr.width<640 && mr.height<480) /* To check if the rectangle is out of screen (long negative),if not it will THROW EXCEPTION: 
 	      error(-211) see: https://github.com/opencv/opencv/issues/7573 */
 		{
 		detection = 0;
 		mr = mr & Rect2d(0, 0, 640, 480); /* To avoid exception  error: (-215:Assertion failed) */ 
 		tracker = TrackerCSRT::create(params); /* Create the tracker object */
+		
 		tracker->init(frame, mr); 
 		parameters_servo.PID_start = 1;
 		parameters.seek = 1;
 		}
-	  
 	    }
 	}
 	
@@ -1160,7 +1189,7 @@ parameters.global_position = 1;
 
 /* Next function will move the robot backwards */
 
-void Backward(int servos_handler)
+void Backwards(int servos_handler)
 
 {
   int i;
@@ -1960,16 +1989,15 @@ void *Walking(void *arg)
   const int FRONTLIGHT1 = 13; /*BCM pin 13, front LED*/
   gpioSetMode(FRONTLIGHT0, PI_OUTPUT); 
   gpioSetMode(FRONTLIGHT1, PI_OUTPUT); 
+  int count = 0;
   
   while(interrupt)
   { 
-    while(parameters.enable_walking && interrupt)
-    {
       Centre(servo_handler);
       gpioWrite(FRONTLIGHT0, 0);
       gpioWrite(FRONTLIGHT1, 0);
       
-	while(!parameters.ultrimpct && parameters.seek && parameters.enable_walking && interrupt)
+	while(!parameters.ultrimpct && parameters.seek && parameters.enable_walking && interrupt && !parameters.left && !parameters.right && !parameters.backwards)
 	{
 	  Forward(servo_handler);
 	}
@@ -1978,9 +2006,47 @@ void *Walking(void *arg)
 	{
 	  gpioWrite(FRONTLIGHT0, 1);
 	  gpioWrite(FRONTLIGHT1, 1);
-	  Backward((int)arg);
+	  Backwards((int)arg);
 	} 
-    }
+	while(!parameters.ultrimpct && interrupt && parameters.enable_walking && parameters.left)
+	{
+	  Left((int)arg);
+	  count++;
+	  if (count > 1)
+	  {
+	    parameters.left = 0;
+	    count = 0;
+	    parameters.enable_walking = 0;
+	     parameters.detect = 1;
+	    break;
+	  }
+	} 
+	while(!parameters.ultrimpct && interrupt && parameters.enable_walking && parameters.right)
+	{
+	  Right((int)arg);
+	  count++;
+	  if (count > 1)
+	  {
+	    parameters.right = 0;
+	    count = 0;
+	    parameters.enable_walking = 0;
+	    parameters.detect = 1;
+	    break;
+	  }
+	} 
+	while(!parameters.ultrimpct && interrupt && parameters.enable_walking && parameters.backwards)
+	{
+	  Backwards((int)arg);
+	  count++;
+	  if (count > 1)
+	  {
+	    parameters.backwards = 0;
+	    count = 0;
+	    parameters.enable_walking = 0;
+	    parameters.detect = 1;
+	    break;
+	  }
+	} 
   }
   i2cWriteByteData(parameters_servo.servos, 0xFD, 0x10); /* Shutting down all channels */
   i2cWriteByteData(parameters_servo.servos, 0x00, 0x00); /* Reset */
@@ -2017,8 +2083,12 @@ Init_PCA9685(parameters_servo.servos);
 /* Initializing global parameters*/
 parameters.global_position =1;
 parameters.seek = 0;
+parameters.detect = 1;
 parameters_servo.PID_start = 0;
 parameters.enable_walking = 0;
+parameters.left = 0;
+parameters.right = 0;
+parameters.backwards = 0;
 	
 /* Create threads to start seeing, will not use attributes on this occasion*/  
 pthread_attr_init(&attr);
