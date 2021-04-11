@@ -45,7 +45,7 @@ span{
   <body>
     <div id="container">
       <div id="info">
-        <span>INSERT COIN</span>
+        <span>WATCHING</span>
       </div>
       <img src="/video" />
       <div id="wrapper">
@@ -58,6 +58,16 @@ span{
         <form action="/reset" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
           <button name="RESET" type="submit" value="RESET">RESET TRACKER</button>
         </form>
+          <br />
+          <br />
+        <form action="/left" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
+          <button name="LEFT" type="submit" value="LEFT">TURN LEFT</button>
+          </form>
+        <form action="/backwards" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
+          <button name="BACKWARDS" type="submit" value="BACKWARDS">MOVE BACKWARDS</button>
+        </form>
+        <form action="/right" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
+          <button name="RIGHT" type="submit" value="RIGHT">TURN RIGHT</button>
       </div>
     </div>
   </body>
