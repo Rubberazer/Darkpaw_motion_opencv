@@ -49,26 +49,39 @@ span{
       </div>
       <img src="/video" />
       <div id="wrapper">
-        <form action="/start" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
-          <button name="START" type="submit" value="START">START SEEKING</button>
-          </form>
-        <form action="/stop" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
-          <button name="STOP" type="submit" value="STOP">STOP SEEKING</button>
+        <iframe name="content" style="display:none;"></iframe>
+         <form action="" name="seeking" method="post" target="content"<span style="float:left;"> </span>
+         <input type="hidden" name="startseeking" value="STARTSEEK">
+        <input type="submit" value="START SEEKING"/>
         </form>
-        <form action="/reset" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
-          <button name="RESET" type="submit" value="RESET">RESET TRACKER</button>
+         <form action="" name="notseeking" method="post" target="content"<span style="float:left;"> </span>
+         <input type="hidden" name="stopseeking" value="STOPSEEK">
+        <input type="submit" value="STOP SEEKING"/>
         </form>
-          <br />
-          <br />
-        <form action="/left" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
-          <button name="LEFT" type="submit" value="LEFT">TURN LEFT</button>
-          </form>
-        <form action="/backwards" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
-          <button name="BACKWARDS" type="submit" value="BACKWARDS">MOVE BACKWARDS</button>
+        <form action="" name="resettracker" method="post" target="content"<span style="float:left;"> </span>
+         <input type="hidden" name="resettracker" value="RESETTRACKER">
+        <input type="submit" name="resettracker" value="RESET TRACKER"/>
         </form>
-        <form action="/right" method="post" enctype="multipart/form-data" <span style="float:left;"> </span>
-          <button name="RIGHT" type="submit" value="RIGHT">TURN RIGHT</button>
+         <br />
+         <br />
+         <form action="" name="left" method="post" target="content"<span style="float:left;"> </span>
+         <input type="hidden" name="turnleft" value="TURNLEFT">
+        <input type="submit" name="turnleft" value="TURN LEFT"/>
+        </form>
+        <form action="" name="right" method="post" target="content"<span style="float:left;"> </span>
+         <input type="hidden" name="turnright" value="TURNRIGHT">
+        <input type="submit" name="turnright" value="TURN RIGHT"/>
+        </form>
+        <form action="" name="backwards" method="post" target="content"<span style="float:left;"> </span>
+         <input type="hidden" name="backwards" value="BACKWARDS">
+        <input type="submit" name="backwards" value="GO BACKWARDS"/>
+        </form>
+        <form action="" name="forward" method="post" target="content"<span style="float:left;"> </span>
+         <input type="hidden" name="forward" value="FORWARD">
+        <input type="submit" name="forward" value="GO FORWARD"/>
+        </form>
       </div>
     </div>
+    <script src="script.js" type="text/javascript"></script>
   </body>
 </html>
