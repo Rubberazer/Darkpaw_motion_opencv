@@ -17,7 +17,7 @@ The robot itself can be found here: https://www.adeept.com/adeept-darkpaw-bionic
 
 It is a cool toy and the provided HAT supports connecting some additional stuff if you wanted too, I equipped it with a Raspberry Pi 4 with 8 Gigas so it is (almost) enough for the OpenCV stuff, as a basis to control the GPIO I am using the famous PIGPIO library wich always works first time, really good stuff that can be found here: http://abyz.me.uk/rpi/pigpio/
 
-Embedded web server used is the famous Mongoose, version 7.2 that can be obtained here: https://github.com/cesanta/mongoose/releases
+Embedded web server is built using the famous Mongoose, version 7.2 that can be obtained here: https://github.com/cesanta/mongoose/releases
 
 OpenCV 4.5.0 (or any other version) can be obtained here: https://github.com/opencv/opencv
 
