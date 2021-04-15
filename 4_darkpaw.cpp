@@ -54,6 +54,7 @@ typedef struct
   int left; /* Tell the robot to turn left */
   int right; /* Tell the robot to turn right */
   int backwards; /* Tell the robot to go backwards */
+  int forward; /* Tell the robot to go forward */
   FILE *f;
   
 } PARAM;
@@ -119,8 +120,9 @@ void inthandler1(int signum)
 //   all other URI - serves web_root/ directory
 static void cb(struct mg_connection *c, int ev, void *ev_data, void *fn_data) 
 {
-  /*char result[5];
-  if (mg_http_get_var(&hm->query, "stop", result, sizeof(result))>0)
+  char *test = (char*) malloc(20);
+
+  /*if (mg_http_get_var(&hm->query, "stop", result, sizeof(result))>0) <-for GET mg_http_get_var(&hm->body, "test", test, 5); <- for POST
   {printf("%s\n",result);} */
   
   if (ev == MG_EV_HTTP_MSG) {
@@ -135,55 +137,67 @@ static void cb(struct mg_connection *c, int ev, void *ev_data, void *fn_data)
           "Pragma: no-cache\r\nExpires: Thu, 01 Dec 1994 16:00:00 GMT\r\n"
           "Content-Type: multipart/x-mixed-replace; boundary=--foo\r\n\r\n");
       }  
-      
-      else if (mg_http_match_uri(hm, "/start")) {
+      else { 
+      mg_http_get_var(&hm->body, "startseeking", test, 20);
+      if (!strcmp (test, "STARTSEEK"))
+      {
 	parameters.enable_walking = 1; 
-	hm->uri = mg_str("/");
-	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
-	mg_http_serve_dir(c, hm, &opts);
+	printf("SEEKING\n");
       }
-      else if (mg_http_match_uri(hm, "/stop")) {
-	parameters.enable_walking = 0;
-	hm->uri = mg_str("/");
-	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
-	mg_http_serve_dir(c, hm, &opts);
+      mg_http_get_var(&hm->body, "stopseeking", test, 20);
+      if (!strcmp (test, "STOPSEEK"))
+      {
+	parameters.enable_walking = 0; 
+	printf("STOP SEEKING\n");
       }
-       else if (mg_http_match_uri(hm, "/reset")) {
+      mg_http_get_var(&hm->body, "resettracker", test, 20);
+      if (!strcmp (test, "RESETTRACKER"))
+      {
 	parameters.seek = 0;
-	hm->uri = mg_str("/");
-	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
-	mg_http_serve_dir(c, hm, &opts);
+	printf("TRACKER RESET\n");
       }
-      else if (mg_http_match_uri(hm, "/left")) {
+       mg_http_get_var(&hm->body, "turnleft", test, 20);
+      if (!strcmp (test, "TURNLEFT"))
+      {
 	parameters.left = 1;
 	parameters.enable_walking = 1; 
 	parameters.detect = 0;
 	parameters.seek = 0;
-	hm->uri = mg_str("/");
-	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
-	mg_http_serve_dir(c, hm, &opts);
+	printf("TURN LEFT\n");
       }
-      else if (mg_http_match_uri(hm, "/backwards")) {
-	parameters.backwards = 1;
-	parameters.enable_walking = 1; 
-	parameters.detect = 0;
-	parameters.seek = 0;
-	hm->uri = mg_str("/");
-	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
-	mg_http_serve_dir(c, hm, &opts);
-      }
-      else if (mg_http_match_uri(hm, "/right")) {
+      mg_http_get_var(&hm->body, "turnright", test, 20);
+      if (!strcmp (test, "TURNRIGHT"))
+      {
 	parameters.right = 1;
 	parameters.enable_walking = 1; 
 	parameters.detect = 0;
 	parameters.seek = 0;
-	hm->uri = mg_str("/");
-	struct mg_http_serve_opts opts = {.root_dir = "web_root"};
-	mg_http_serve_dir(c, hm, &opts);
+	printf("TURN RIGHT\n");
       }
-      else { 
+      mg_http_get_var(&hm->body, "backwards", test, 20);
+      if (!strcmp (test, "BACKWARDS"))
+      {
+	parameters.backwards = 1;
+	parameters.enable_walking = 1; 
+	parameters.detect = 0;
+	parameters.seek = 0;
+	printf("GO BACKWARDS\n");
+      }
+       mg_http_get_var(&hm->body, "forward", test, 20);
+      if (!strcmp (test, "FORWARD"))
+      {
+	parameters.forward = 1;
+	parameters.enable_walking = 1; 
+	parameters.detect = 0;
+	parameters.seek = 0;
+	printf("GO FORWARD\n");
+      }
+      mg_http_get_var(&hm->body, "test", test, 20);
+      if (!strcmp (test, "uno"))
+      {printf("IT WORKS\n");}
       struct mg_http_serve_opts opts = {.root_dir = "web_root"};
       mg_http_serve_dir(c, hm, &opts);
+      
     }
   } 
 }
@@ -2041,6 +2055,19 @@ void *Walking(void *arg)
 	  if (count > 1)
 	  {
 	    parameters.backwards = 0;
+	    count = 0;
+	    parameters.enable_walking = 0;
+	    parameters.detect = 1;
+	    break;
+	  }
+	}
+	while(!parameters.ultrimpct && interrupt && parameters.enable_walking && parameters.forward)
+	{
+	  Forward((int)arg);
+	  count++;
+	  if (count > 1)
+	  {
+	    parameters.forward = 0;
 	    count = 0;
 	    parameters.enable_walking = 0;
 	    parameters.detect = 1;
