@@ -1,7 +1,7 @@
 # Darkpaw_motion_opencv
 A little project in C/C++ for the Adeept Darkpaw robot.
 
-<video src='https://github.com/Rubberazer/Darkpaw_motion_opencv/assets/47650457/d74e66f9-015d-43ed-9e28-c8865e67b35d' width=352></video>
+[Playing](https://github.com/Rubberazer/Darkpaw_motion_opencv/assets/47650457/d74e66f9-015d-43ed-9e28-c8865e67b35d)
 
 Basically replaced the original maker's python code by my own C code -with a pinch of C++ for the OpenCV thread, I am using OpenCV to first detect and then follow objects. I added an ultrasound sensor (the usual HC-SR04) as there were empty slots in the robot HAT, so it doesn't hit the walls. At the moment the robot can move: forward, backward, turn right and left totally fine, is able to detect, track and follow objects. It also incorporates a MPU6050 gyroscope & accelerometer that comes with the kit, at the moment those values are stored along with the distance measured by the ultrasound sensor in a csv file with a time stamp. Version 3 also incorporates a web server.
 
